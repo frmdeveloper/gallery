@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Latar jendela saat aplikasi mulai (pra-Compose, API < 31): putih,
+     ikon galeri di tengah, logo FRM di bawah — pola splash WhatsApp -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/white" />
+    <item
+        android:width="128dp"
+        android:height="128dp"
+        android:gravity="center">
+        <bitmap
+            android:gravity="fill"
+            android:src="@drawable/ic_launcher_art" />
+    </item>
+    <item
+        android:width="150dp"
+        android:height="126dp"
+        android:bottom="44dp"
+        android:gravity="bottom|center_horizontal">
+        <bitmap
+            android:gravity="fill"
+            android:src="@drawable/logo_frm" />
+    </item>
+</layer-list>
