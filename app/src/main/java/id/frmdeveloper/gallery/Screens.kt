@@ -1184,7 +1184,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.41",
+                sub = "Galeri FRM 1.43",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
@@ -2159,6 +2159,7 @@ fun PlayerScreen(
                     }
                     Spacer(Modifier.height(24.dp))
                     var menuLainLagu by remember { mutableStateOf(false) }
+                    var rincianLagu by remember { mutableStateOf(false) }
                     // Judul + artis (kiri) • ikon gelombang (kanan)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2232,8 +2233,55 @@ fun PlayerScreen(
                                     },
                                     onClick = { vm.siklusUlangLagu(); menuLainLagu = false },
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Rincian") },
+                                    leadingIcon = { Icon(Icons.Filled.Info, null) },
+                                    onClick = { menuLainLagu = false; rincianLagu = true },
+                                )
                             }
                         }
+                    }
+                    if (rincianLagu) {
+                        val berkasLokal = remember(lagu.key) {
+                            if (lagu.akunDrive.isBlank() && lagu.path.isNotBlank()) {
+                                java.io.File(lagu.path).takeIf { it.exists() }
+                            } else null
+                        }
+                        AlertDialog(
+                            onDismissRequest = { rincianLagu = false },
+                            title = { Text("Rincian") },
+                            text = {
+                                Text(
+                                    buildString {
+                                        append("Judul: ${lagu.title}\n")
+                                        append("Artis: ${lagu.artist}\n")
+                                        if (lagu.album.isNotBlank()) append("Album: ${lagu.album}\n")
+                                        append("Durasi: ${formatDurasi(lagu.durationMs)}\n")
+                                        append(
+                                            "Sumber: " + if (lagu.akunDrive.isNotBlank()) {
+                                                "Google Drive (${lagu.akunDrive})"
+                                            } else {
+                                                "Perangkat"
+                                            }
+                                        )
+                                        if (lagu.path.isNotBlank()) append("\nLokasi: ${lagu.path}")
+                                        berkasLokal?.let {
+                                            append("\nUkuran: ${formatUkuranBerkas(it.length())}")
+                                        }
+                                        if (lagu.dateMillis > 0) {
+                                            append(
+                                                "\nTanggal: " + java.text.SimpleDateFormat(
+                                                    "d MMM yyyy", java.util.Locale("id", "ID"),
+                                                ).format(java.util.Date(lagu.dateMillis))
+                                            )
+                                        }
+                                    }
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { rincianLagu = false }) { Text("Tutup") }
+                            },
+                        )
                     }
                     Spacer(Modifier.height(14.dp))
                     // Seekbar TIPIS custom + waktu berjalan / SISA (negatif)

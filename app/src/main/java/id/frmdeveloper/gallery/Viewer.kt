@@ -655,10 +655,19 @@ private fun VideoPage(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(30.dp),
             ) {
-                TombolKaca(onClick = { onPrev(); sentuh() }, ukuran = 46.dp, enabled = adaPrev) {
+                TombolKaca(
+                    onClick = {
+                        // ⏮: udah jalan >3 dtk = atur durasi mentok kiri (dari 0);
+                        // masih di awal = beneran video sebelumnya (perintah user)
+                        if (player.currentPosition > 3000) player.seekTo(0) else onPrev()
+                        sentuh()
+                    },
+                    ukuran = 46.dp,
+                    enabled = adaPrev || posisiMs > 3000,
+                ) {
                     Icon(
                         Icons.Filled.SkipPrevious, "Sebelumnya",
-                        tint = Color.White.copy(alpha = if (adaPrev) 1f else 0.35f),
+                        tint = Color.White.copy(alpha = if (adaPrev || posisiMs > 3000) 1f else 0.35f),
                         modifier = Modifier.size(24.dp),
                     )
                 }
@@ -838,7 +847,7 @@ private fun LayarModeMusikVideo(
         val masuk = bingkaiMasuk ?: return@LaunchedEffect
         bingkaiPudar = masuk
         alphaPudar.snapTo(0f)
-        alphaPudar.animateTo(1f, animationSpec = tween(800))
+        alphaPudar.animateTo(1f, animationSpec = tween(450))
         bingkaiTampil = masuk
         bingkaiPudar = null
     }
@@ -873,7 +882,7 @@ private fun LayarModeMusikVideo(
                     lagiJepret = false
                 }
             }
-            delay(900)
+            delay(400)
         }
     }
     // === Kontrol disamakan PERSIS dgn pemutar audio (perintah user) ===
@@ -1120,13 +1129,16 @@ private fun LayarModeMusikVideo(
                         horizontalArrangement = Arrangement.Center,
                     ) {
                         IconButton(
-                            onClick = { if (acakVideo) onLompatAcak() else onPrev() },
-                            enabled = adaPrev || acakVideo,
+                            onClick = {
+                                if (posisiMs > 3000) player.seekTo(0)
+                                else if (acakVideo) onLompatAcak() else onPrev()
+                            },
+                            enabled = adaPrev || acakVideo || posisiMs > 3000,
                             modifier = Modifier.size(56.dp),
                         ) {
                             Icon(
                                 Icons.Filled.SkipPrevious, "Sebelumnya",
-                                tint = Color.White.copy(alpha = if (adaPrev || acakVideo) 1f else 0.35f),
+                                tint = Color.White.copy(alpha = if (adaPrev || acakVideo || posisiMs > 3000) 1f else 0.35f),
                                 modifier = Modifier.size(40.dp),
                             )
                         }
