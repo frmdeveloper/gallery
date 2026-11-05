@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash sistem Android 12+: ikon di tengah + logo FRM di bawah,
+         persis pola "from Meta" di WhatsApp -->
+    <style name="Theme.GaleriFRM" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:windowSplashScreenBackground">@android:color/white</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_art</item>
+        <item name="android:windowSplashScreenBrandingImage">@drawable/logo_frm_brand</item>
+        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+    </style>
+</resources>
