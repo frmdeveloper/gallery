@@ -23,8 +23,8 @@ android {
         applicationId = "id.frmdeveloper.gallery"
         minSdk = 30
         targetSdk = 36
-        versionCode = 37
-        versionName = "1.36"
+        versionCode = 38
+        versionName = "1.37"
         buildConfigField("String", "DRIVE_CLIENT_ID", "\"${localProp("drive.clientId")}\"")
         buildConfigField("String", "DRIVE_CLIENT_SECRET", "\"${localProp("drive.clientSecret")}\"")
     }

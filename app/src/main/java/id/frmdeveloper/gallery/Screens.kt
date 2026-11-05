@@ -49,6 +49,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -270,6 +272,7 @@ fun MediaGrid(
     onItemLongClick: (MediaItem) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    kunciPosisi: String = "grid",
 ) {
     val context = LocalContext.current
     // Grouping ribuan item DIBANGUN DI BACKGROUND (Dispatchers.Default), bukan
@@ -310,7 +313,12 @@ fun MediaGrid(
         with(kepadatan) { (konfigurasi.screenWidthDp.toFloat() / kolomKini).dp.roundToPx() }
             .coerceIn(96, 720)
     }
+    // Posisi scroll DISIMPAN per pemilik grid (timeline / tiap album):
+    // habis buka foto terus kembali, grid balik ke posisi terakhir,
+    // bukan ke atas (permintaan user — capek scroll dari awal)
+    val statusGrid = rememberSaveable(key = "posisi_" + kunciPosisi, saver = LazyGridState.Saver) { LazyGridState() }
     LazyVerticalGrid(
+        state = statusGrid,
         columns = GridCells.Fixed(kolomUntukLevel(level)),
         modifier = modifier
             .fillMaxSize()
@@ -554,6 +562,7 @@ fun TimelineScreen(
             }
         } else {
             MediaGrid(
+                kunciPosisi = "timeline",
                 items = items,
                 level = level,
                 onLevelChange = { level = it },
@@ -577,6 +586,8 @@ fun AlbumsScreen(
     onOpenAlbum: (Album) -> Unit,
 ) {
     val ctx = LocalContext.current
+    val statusDaftarAlbum = rememberSaveable(key = "posisi_album_daftar", saver = LazyListState.Saver) { LazyListState() }
+    val statusGridAlbum = rememberSaveable(key = "posisi_album_grid", saver = LazyGridState.Saver) { LazyGridState() }
     var kolom by rememberSaveable { mutableIntStateOf(UiStore.loadInt(ctx, "kolom_album", 3)) }
     // Mode DAFTAR ala Samsung: pinch out sampai MENTOK di grid -> berubah
     // jadi daftar (cover rounded gede di kiri + nama + jumlah). Pinch in
@@ -726,6 +737,7 @@ fun AlbumsScreen(
             }
         } else if (modeDaftar) {
             LazyColumn(
+                state = statusDaftarAlbum,
                 modifier = Modifier
                     .fillMaxSize()
                     .animasiZoom(kunci = modeDaftar, membesar = false)
@@ -770,6 +782,7 @@ fun AlbumsScreen(
             }
         } else {
             LazyVerticalGrid(
+                state = statusGridAlbum,
                 columns = GridCells.Fixed(kolom),
                 modifier = Modifier
                     .fillMaxSize()
@@ -868,6 +881,7 @@ fun AlbumDetailScreen(
             }
         } else {
             MediaGrid(
+                kunciPosisi = "album_" + album.id,
                 items = freshItems,
                 level = level,
                 onLevelChange = { level = it },
@@ -1091,7 +1105,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.36",
+                sub = "Galeri FRM 1.37",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
@@ -1419,6 +1433,8 @@ fun AudioScreen(
         UiStore.saveInt(ctxAudio, "kolom_audio", kolom)
         UiStore.saveBool(ctxAudio, "daftar_audio", modeDaftar)
     }
+    val statusDaftarAudio = rememberSaveable(key = "posisi_audio_daftar", saver = LazyListState.Saver) { LazyListState() }
+    val statusGridAudio = rememberSaveable(key = "posisi_audio_grid", saver = LazyGridState.Saver) { LazyGridState() }
     var query by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(izinAudio) {
         if (izinAudio) vm.reloadAudio()
@@ -1488,6 +1504,7 @@ fun AudioScreen(
                 )
             }
             modeDaftar -> LazyColumn(
+                state = statusDaftarAudio,
                 modifier = Modifier
                     .fillMaxSize()
                     .animasiZoom(kunci = modeDaftar, membesar = false)
@@ -1534,6 +1551,7 @@ fun AudioScreen(
                 }
             }
             else -> LazyVerticalGrid(
+                state = statusGridAudio,
                 columns = GridCells.Fixed(kolom),
                 modifier = Modifier
                     .fillMaxSize()
