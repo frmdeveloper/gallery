@@ -23,10 +23,12 @@ android {
         applicationId = "id.frmdeveloper.gallery"
         minSdk = 30
         targetSdk = 36
-        versionCode = 49
-        versionName = "1.48"
+        versionCode = 50
+        versionName = "1.49"
         buildConfigField("String", "DRIVE_CLIENT_ID", "\"${localProp("drive.clientId")}\"")
         buildConfigField("String", "DRIVE_CLIENT_SECRET", "\"${localProp("drive.clientSecret")}\"")
+        buildConfigField("String", "DRIVE_WEB_CLIENT_ID", "\"${localProp(\"drive.webClientId\")}\"")
+        buildConfigField("String", "DRIVE_WEB_CLIENT_SECRET", "\"${localProp(\"drive.webClientSecret\")}\"")
     }
 
     // TIDAK ADA kunci tanda tangan di repo ini. Build debug pakai kunci debug
@@ -84,6 +86,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("io.coil-kt:coil-video:2.7.0")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-session:1.8.0")

@@ -15,3 +15,6 @@ drive.clientSecret=
 
 # (Opsional) lokasi Android SDK kalau bukan lokasi bawaan:
 # sdk.dir=/path/ke/Android/Sdk
+# Client OAuth tipe "Web application" (buat login dialog Google / Identity API)
+drive.webClientId=
+drive.webClientSecret=

@@ -14,6 +14,8 @@ package id.frmdeveloper.gallery
 object DriveAuth {
     val clientId: String get() = BuildConfig.DRIVE_CLIENT_ID
     val clientSecret: String get() = BuildConfig.DRIVE_CLIENT_SECRET
+    val webClientId: String get() = BuildConfig.DRIVE_WEB_CLIENT_ID
+    val webClientSecret: String get() = BuildConfig.DRIVE_WEB_CLIENT_SECRET
 
     /** True kalau kredensial OAuth sudah diisi di local.properties. */
     val isConfigured: Boolean get() = clientId.isNotEmpty() && clientSecret.isNotEmpty()

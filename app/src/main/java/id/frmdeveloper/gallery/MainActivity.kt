@@ -83,9 +83,27 @@ import coil.decode.VideoFrameDecoder
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private var vmGaleri: GalleryViewModel? = null
+    private val peluncurResolusiDrive = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
+    ) { hasil ->
+        vmGaleri?.selesaikanResolusiDrive(hasil.resultCode == android.app.Activity.RESULT_OK)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DriveApi.init(this)
+        // Jembatan login Drive dialog Google: ViewModel minta Activity
+        // menampilkan lembar pilih akun/izin (PendingIntent Identity API)
+        val vmUtama = androidx.lifecycle.ViewModelProvider(this)[GalleryViewModel::class.java]
+        vmGaleri = vmUtama
+        vmUtama.peluncurResolusiDrive = { pi ->
+            runCatching {
+                peluncurResolusiDrive.launch(
+                    androidx.activity.result.IntentSenderRequest.Builder(pi.intentSender).build()
+                )
+            }
+        }
         Coil.setImageLoader(
             ImageLoader.Builder(this)
                 .components {

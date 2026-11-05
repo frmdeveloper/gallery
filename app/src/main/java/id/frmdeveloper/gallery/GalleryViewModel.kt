@@ -21,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class GalleryViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -63,6 +65,15 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
     var loginMenunggu: Boolean by mutableStateOf(false)
         private set
     private var sesiLogin: DriveLogin.Sesi? = null
+    /** Jembatan ke Activity buat menampilkan dialog izin Google (GMS). */
+    var peluncurResolusiDrive: ((android.app.PendingIntent) -> Unit)? = null
+    private var lanjutResolusi: ((Boolean) -> Unit)? = null
+
+    fun selesaikanResolusiDrive(ok: Boolean) {
+        val l = lanjutResolusi
+        lanjutResolusi = null
+        l?.invoke(ok)
+    }
 
     init {
         DriveApi.init(app)
@@ -162,33 +173,24 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Login Google Drive (SATU-SATUNYA jalur sejak v1.15 — tidak ada lagi
-     * akun tertanam): buka browser ke halaman login Google,
-     * tunggu redirect balik ke server loopback aplikasi, tukar kode jadi
-     * refresh token akun tsb. Browser dibuka dari sini (intent VIEW).
+     * Login Google Drive (tidak ada akun tertanam sejak v1.15 — setiap
+     * pengguna login pakai akun Google-nya sendiri). Jalur utama: DIALOG
+     * Google bawaan (DriveLoginGoogle, tanpa browser). Jalur dialog gagal
+     * (Play services tak ada / client Android belum terdaftar di Cloud
+     * Console / dibatalkan) -> jatuh ke login browser loopback (DriveLogin).
      */
     fun loginAkunLain() {
         if (loginMenunggu) return
         val ctx = getApplication<Application>()
         viewModelScope.launch {
             loginMenunggu = true
-            message = "Membuka halaman login Google…"
-            val hasil = withContext(Dispatchers.IO) {
-                runCatching {
-                    val sesi = DriveLogin.mulai()
-                    sesiLogin = sesi
-                    withContext(Dispatchers.Main) {
-                        runCatching {
-                            val intent = android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                Uri.parse(sesi.urlAuth),
-                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            ctx.startActivity(intent)
-                        }
-                    }
-                    val kode = DriveLogin.tungguKode(sesi)
-                    DriveLogin.tukarKode(sesi, kode)
-                }
+            message = "Menyiapkan login Google…"
+            val hasilDialog = runCatching { prosesLoginDialog(ctx) }
+            val hasil = if (hasilDialog.isSuccess) {
+                hasilDialog
+            } else {
+                message = "Login dialog tidak tersedia — membuka login lewat browser…"
+                runCatching { prosesLoginBrowser(ctx) }
             }
             sesiLogin = null
             loginMenunggu = false
@@ -206,7 +208,53 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Dialog Google: otorisasi -> (mungkin tampilkan UI) -> tukar kode. */
+    private suspend fun prosesLoginDialog(ctx: android.content.Context): Pair<String, String> {
+        val awal = withContext(Dispatchers.IO) {
+            runCatching { DriveLoginGoogle.otorisasi(ctx) }
+        }
+        val hasilAwal = awal.getOrElse { e ->
+            if (e is DriveLoginGoogle.PerluResolusi) {
+                if (!tungguResolusi(e.pendingIntent)) error("Login dibatalkan")
+                withContext(Dispatchers.IO) { DriveLoginGoogle.otorisasi(ctx) }
+            } else {
+                throw e
+            }
+        }
+        val kode = hasilAwal.serverAuthCode ?: error("Google tidak memberi kode login")
+        return withContext(Dispatchers.IO) { DriveLoginGoogle.tukarKodeServer(kode) }
+    }
+
+    /** Tahan coroutine sampai Activity melaporkan hasil dialog izin. */
+    private suspend fun tungguResolusi(pi: android.app.PendingIntent): Boolean {
+        val peluncur = peluncurResolusiDrive ?: error("Peluncur dialog tidak siap")
+        return suspendCancellableCoroutine { cont ->
+            lanjutResolusi = { ok -> if (cont.isActive) cont.resume(ok) }
+            cont.invokeOnCancellation { lanjutResolusi = null }
+            peluncur(pi)
+        }
+    }
+
+    /** Login cadangan: browser + server loopback 127.0.0.1 (DriveLogin). */
+    private suspend fun prosesLoginBrowser(ctx: android.content.Context): Pair<String, String> =
+        withContext(Dispatchers.IO) {
+            val sesi = DriveLogin.mulai()
+            sesiLogin = sesi
+            withContext(Dispatchers.Main) {
+                runCatching {
+                    val intent = android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        Uri.parse(sesi.urlAuth),
+                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    ctx.startActivity(intent)
+                }
+            }
+            val kode = DriveLogin.tungguKode(sesi)
+            DriveLogin.tukarKode(sesi, kode)
+        }
+
     fun batalLogin() {
+        selesaikanResolusiDrive(false)
         sesiLogin?.batalkan()
         sesiLogin = null
     }
