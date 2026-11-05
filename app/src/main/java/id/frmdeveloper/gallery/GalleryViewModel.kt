@@ -189,7 +189,7 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
             val hasil = if (hasilDialog.isSuccess) {
                 hasilDialog
             } else {
-                message = "Login dialog tidak tersedia — membuka login lewat browser…"
+                message = "Login dialog gagal (${ringkasSebab(hasilDialog.exceptionOrNull())}) — membuka login lewat browser…"
                 runCatching { prosesLoginBrowser(ctx) }
             }
             sesiLogin = null
@@ -814,5 +814,15 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
             message = "Upload selesai: $ok berhasil, $fail gagal"
             reloadDrive()
         }
+    }
+}
+
+private fun ringkasSebab(e: Throwable?): String {
+    var cur = e ?: return "tidak diketahui"
+    while (true) {
+        if (cur is com.google.android.gms.common.api.ApiException) {
+            return "Google API ${cur.statusCode}: ${cur.message}"
+        }
+        cur = cur.cause ?: return cur.message ?: cur.javaClass.simpleName
     }
 }

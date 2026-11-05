@@ -54,7 +54,11 @@ object DriveLoginGoogle {
      * mengambil hasilnya (server auth code).
      */
     fun otorisasi(ctx: Context): AuthorizationResult {
-        val hasil = Tasks.await(Identity.getAuthorizationClient(ctx).authorize(permintaan()))
+        val hasil = try {
+            Tasks.await(Identity.getAuthorizationClient(ctx).authorize(permintaan()))
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw (e.cause ?: e)
+        }
         val pi = hasil.pendingIntent
         if (hasil.hasResolution() && pi != null) throw PerluResolusi(pi)
         return hasil
