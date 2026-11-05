@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gambar ikon DIPERKECIL ke zona aman adaptif (tengah ~66%): launcher
+     memotong tepi kanvas 108dp, jadi tanpa inset gambar tampil ke-zoom
+     dan kepotong (kejadian v1.33). Inset 17% per sisi. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_launcher_art"
+    android:inset="17%" />
