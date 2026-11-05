@@ -51,12 +51,6 @@ di langkah otorisasi Google) — fitur lokal lain tetap jalan.
 
 ## Catatan
 
-- **Ikon**: repo ini memakai ikon bunga polos. Varian ikon dengan karakter
-  anime hanya untuk build pribadi dan sengaja tidak disertakan (karakter
-  berhak cipta).
-- **APK lama jangan dibagikan**: build v1.3–v1.14 masih mengandung token
-  lama — hanya v1.15 ke atas yang aman dibagikan, dan repo ini tidak
-  menyertakan APK apa pun.
 - **Dependensi**: `app/libs/jaudiotagger.jar` disertakan karena dibutuhkan
   untuk membaca/menulis cover lagu (lihat lisensi jaudiotagger di hulu).
 
