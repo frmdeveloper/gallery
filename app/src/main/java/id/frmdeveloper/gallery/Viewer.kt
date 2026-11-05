@@ -2,6 +2,8 @@ package id.frmdeveloper.gallery
 
 import android.content.Intent
 import android.os.Build
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.background
@@ -90,6 +92,14 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.VolumeMute
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
@@ -292,6 +302,7 @@ private fun VideoPage(
     onNext: () -> Unit,
     modeMusik: Boolean = false,
     onModeMusik: (Boolean) -> Unit = {},
+    onLompatAcak: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
@@ -495,6 +506,7 @@ private fun VideoPage(
                 onToggleFavorite = onToggleFavorite,
                 onPrev = onPrev,
                 onNext = onNext,
+                onLompatAcak = onLompatAcak,
                 onKeluar = { onModeMusik(false) },
                 onDaftarView = { playerViewRef = it },
             )
@@ -771,6 +783,7 @@ private fun LayarModeMusikVideo(
     onToggleFavorite: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onLompatAcak: () -> Unit,
     onKeluar: () -> Unit,
     onDaftarView: (PlayerView) -> Unit,
 ) {
@@ -828,6 +841,44 @@ private fun LayarModeMusikVideo(
             delay(300)
         }
     }
+    // === Kontrol disamakan PERSIS dgn pemutar audio (perintah user) ===
+    var acakVideo by remember(item.key) { mutableStateOf(false) }
+    var ulangVideo by remember(item.key) { mutableIntStateOf(0) }
+    LaunchedEffect(ulangVideo) {
+        player.repeatMode = if (ulangVideo == 2) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    }
+    LaunchedEffect(selesai) {
+        if (selesai && ulangVideo == 1) {
+            if (acakVideo) onLompatAcak() else if (adaNext) onNext()
+        }
+    }
+    DisposableEffect(item.key) {
+        onDispose { player.repeatMode = Player.REPEAT_MODE_OFF }
+    }
+    val audioManager = remember {
+        contextMusik.getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager
+    }
+    val maksVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    var volume by remember {
+        mutableFloatStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat())
+    }
+    LaunchedEffect(posisiMs) {
+        volume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
+    }
+    val namaOutput = remember(item.key) {
+        runCatching {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                .firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                        it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                        it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                        it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+                }?.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Speaker"
+        }.getOrDefault("Speaker")
+    }
+    fun toastMode(teks: String) {
+        android.widget.Toast.makeText(contextMusik, teks, android.widget.Toast.LENGTH_SHORT).show()
+    }
     Box(Modifier.fillMaxSize().background(Color(0xFF101418))) {
         // Latar: video asli diputar player latar, penuhi layar + buram
         AndroidView(
@@ -863,11 +914,9 @@ private fun LayarModeMusikVideo(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                Icon(
-                    Icons.Filled.MusicNote, null,
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.padding(end = 12.dp),
-                )
+                IconButton(onClick = { toastMode("Antrean putar = daftar video yang dibuka") }) {
+                    Icon(Icons.Filled.QueueMusic, "Antrean", tint = Color.White.copy(alpha = 0.85f))
+                }
             }
             Spacer(Modifier.weight(0.85f))
             // Kartu kaca ala pemutar musik
@@ -918,52 +967,69 @@ private fun LayarModeMusikVideo(
                                 color = Color.White.copy(alpha = 0.55f), maxLines = 1,
                             )
                         }
-                        IconButton(onClick = onToggleFavorite) {
+                        IconButton(onClick = { toastMode("Lirik belum tersedia") }) {
                             Icon(
-                                if (favorit) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                "Favorit", tint = Color.White.copy(alpha = 0.9f),
+                                Icons.Filled.GraphicEq, "Lirik",
+                                tint = Color.White.copy(alpha = 0.75f),
                             )
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    val tampilPosisi = geser?.toLong() ?: posisiMs
-                    Slider(
-                        value = (geser ?: posisiMs.toFloat())
-                            .coerceIn(0f, durasiMs.coerceAtLeast(1).toFloat()),
-                        onValueChange = { onGeser(it) },
-                        onValueChangeFinished = {
+                    Spacer(Modifier.height(14.dp))
+                    // Seekbar TIPIS yg sama persis kayak pemutar audio
+                    val durasiAmanMusik = durasiMs.coerceAtLeast(1)
+                    val posisiKiniMusik = geser ?: posisiMs.toFloat()
+                    BarGeserTipis(
+                        fraksi = (posisiKiniMusik / durasiAmanMusik).coerceIn(0f, 1f),
+                        onGeser = { f -> onGeser(f * durasiAmanMusik) },
+                        onSelesai = {
                             geser?.let { player.seekTo(it.toLong()) }
                             onGeser(null)
                         },
-                        valueRange = 0f..durasiMs.coerceAtLeast(1).toFloat(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color.White,
-                            activeTrackColor = Color.White,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.35f),
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
+                        tinggi = 5.dp,
+                        knob = true,
                     )
                     Row(Modifier.fillMaxWidth()) {
                         Text(
-                            formatDurasi(tampilPosisi),
-                            color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp,
+                            formatDurasi(posisiKiniMusik.toLong()),
+                            fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f),
                         )
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "-" + formatDurasi((durasiMs - tampilPosisi).coerceAtLeast(0)),
-                            color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp,
+                            "-" + formatDurasi((durasiMs - posisiKiniMusik.toLong()).coerceAtLeast(0)),
+                            fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f),
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(16.dp))
+                    // Transport PERSIS pemutar audio: acak • bintang • ⏮ • ⏯ GEDE • ⏭ • ulang
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        IconButton(onClick = onPrev, enabled = adaPrev) {
+                        IconButton(onClick = { acakVideo = !acakVideo }, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                Icons.Filled.Shuffle, "Acak",
+                                tint = if (acakVideo) Color.White else Color.White.copy(alpha = 0.45f),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        IconButton(onClick = onToggleFavorite, modifier = Modifier.size(44.dp)) {
+                            Icon(
+                                if (favorit) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                "Favorit",
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = { if (acakVideo) onLompatAcak() else onPrev() },
+                            enabled = adaPrev || acakVideo,
+                            modifier = Modifier.size(56.dp),
+                        ) {
                             Icon(
                                 Icons.Filled.SkipPrevious, "Sebelumnya",
-                                tint = Color.White.copy(alpha = if (adaPrev) 1f else 0.35f),
-                                modifier = Modifier.size(38.dp),
+                                tint = Color.White.copy(alpha = if (adaPrev || acakVideo) 1f else 0.35f),
+                                modifier = Modifier.size(40.dp),
                             )
                         }
                         IconButton(
@@ -977,20 +1043,83 @@ private fun LayarModeMusikVideo(
                                     player.play()
                                 }
                             },
-                            modifier = Modifier.size(68.dp),
+                            modifier = Modifier.size(72.dp),
                         ) {
                             Icon(
                                 if (muter) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 if (muter) "Jeda" else "Putar",
-                                tint = Color.White, modifier = Modifier.size(54.dp),
+                                tint = Color.White, modifier = Modifier.size(56.dp),
                             )
                         }
-                        IconButton(onClick = onNext, enabled = adaNext) {
+                        IconButton(
+                            onClick = { if (acakVideo) onLompatAcak() else onNext() },
+                            enabled = adaNext || acakVideo,
+                            modifier = Modifier.size(56.dp),
+                        ) {
                             Icon(
                                 Icons.Filled.SkipNext, "Berikutnya",
-                                tint = Color.White.copy(alpha = if (adaNext) 1f else 0.35f),
-                                modifier = Modifier.size(38.dp),
+                                tint = Color.White.copy(alpha = if (adaNext || acakVideo) 1f else 0.35f),
+                                modifier = Modifier.size(40.dp),
                             )
+                        }
+                        IconButton(onClick = { ulangVideo = (ulangVideo + 1) % 3 }, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                if (ulangVideo == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                                "Ulang",
+                                tint = if (ulangVideo > 0) Color.White else Color.White.copy(alpha = 0.45f),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    // Bar volume GEMUK ala iOS (sama kayak pemutar audio)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Filled.VolumeMute, null,
+                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(18.dp),
+                        )
+                        Box(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                            BarGeserTipis(
+                                fraksi = if (maksVolume > 0) volume / maksVolume else 0f,
+                                onGeser = { f ->
+                                    val vBaru = (f * maksVolume).toInt()
+                                    volume = vBaru.toFloat()
+                                    runCatching {
+                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vBaru, 0)
+                                    }
+                                },
+                                onSelesai = {},
+                                tinggi = 9.dp,
+                                knob = false,
+                            )
+                        }
+                        Icon(
+                            Icons.Filled.VolumeUp, null,
+                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    // Pill output ala AirPlay (sama kayak pemutar audio)
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = Color.White.copy(alpha = 0.16f),
+                        modifier = Modifier.clickable {
+                            toastMode("Output suara: $namaOutput")
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Filled.Cast, null,
+                                tint = Color.White, modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(9.dp))
+                            Text(namaOutput, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 15.sp)
                         }
                     }
                 }
@@ -1092,6 +1221,12 @@ fun ViewerScreen(
                     adaNext = page < items.size - 1,
                     onPrev = { scope.launch { pagerState.animateScrollToPage(page - 1) } },
                     onNext = { scope.launch { pagerState.animateScrollToPage(page + 1) } },
+                    onLompatAcak = {
+                        val kandidat = items.indices.filter { items[it].isVideo && it != page }
+                        if (kandidat.isNotEmpty()) {
+                            scope.launch { pagerState.animateScrollToPage(kandidat.random()) }
+                        }
+                    },
                     modeMusik = modeMusikVideo,
                     onModeMusik = { modeMusikVideo = it },
                 )

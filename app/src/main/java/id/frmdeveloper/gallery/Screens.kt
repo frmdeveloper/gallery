@@ -599,7 +599,9 @@ fun AlbumsScreen(
     }
     var mencari by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var urutan by rememberSaveable { mutableIntStateOf(0) }
+    // Default urutan album = Nama A–Z (perintah user); kunci saveable
+    // diganti biar simpanan lama ("Urutan bawaan") nggak menang
+    var urutan by rememberSaveable(key = "urutan_album_v2") { mutableIntStateOf(1) }
     var menuOpen by remember { mutableStateOf(false) }
 
     val albums = remember(vm.localAlbums, vm.driveAlbums, vm.favorites, vm.media, vm.driveItems) {
@@ -1105,7 +1107,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.37",
+                sub = "Galeri FRM 1.38",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
@@ -1781,7 +1783,7 @@ fun MiniPlayerBar(
 
 /** Bar geser TIPIS ala iOS (seek & volume) — bukan Slider Material yg gendut. */
 @Composable
-private fun BarGeserTipis(
+fun BarGeserTipis(
     fraksi: Float,
     onGeser: (Float) -> Unit,
     onSelesai: () -> Unit,
