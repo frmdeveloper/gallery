@@ -32,6 +32,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.pager.HorizontalPager
@@ -312,6 +317,7 @@ private fun VideoPage(
     onSerahkanKeLatar: (Long) -> Unit = {},
     sambungan: Pair<String, Long>? = null,
     onSambunganTerpakai: () -> Unit = {},
+    onKunciPager: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
@@ -532,7 +538,7 @@ private fun VideoPage(
                 geser = geser,
                 adaPrev = adaPrev,
                 adaNext = adaNext,
-                onGeser = { geser = it },
+                onGeser = { nilai -> geser = nilai; onKunciPager(nilai != null) },
                 onToggleFavorite = onToggleFavorite,
                 onPrev = onPrev,
                 onNext = onNext,
@@ -721,10 +727,11 @@ private fun VideoPage(
                         )
                         Slider(
                             value = (geser ?: posisiMs.toFloat()).coerceIn(0f, durasiMs.coerceAtLeast(1).toFloat()),
-                            onValueChange = { geser = it },
+                            onValueChange = { geser = it; onKunciPager(true) },
                             onValueChangeFinished = {
                                 geser?.let { player.seekTo(it.toLong()) }
                                 geser = null
+                                onKunciPager(false)
                                 sentuh()
                             },
                             valueRange = 0f..durasiMs.coerceAtLeast(1).toFloat(),
@@ -834,57 +841,22 @@ private fun LayarModeMusikVideo(
     // tanpa stream/decoder tambahan. Pas video jeda, frame terakhir
     // tetap tampil (memang begitu seharusnya latar).
     val contextMusik = LocalContext.current
-    var viewCover by remember { mutableStateOf<PlayerView?>(null) }
-    // LATAR AMBIENT (pilihan user): frame kecil dari video diganti pakai
-    // PUDAR SILANG (crossfade) beranimasi 60fps — sumbernya memang cuma
-    // berubah ~1x/detik, tapi pudaran halusnya bikin latar terasa ngalir,
-    // nggak patah-patah kayak slideshow (cara sebelumnya terasa ngelag).
-    var bingkaiMasuk by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    var bingkaiTampil by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    var bingkaiPudar by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    val alphaPudar = remember { Animatable(0f) }
-    LaunchedEffect(bingkaiMasuk) {
-        val masuk = bingkaiMasuk ?: return@LaunchedEffect
-        bingkaiPudar = masuk
-        alphaPudar.snapTo(0f)
-        alphaPudar.animateTo(1f, animationSpec = tween(450))
-        bingkaiTampil = masuk
-        bingkaiPudar = null
-    }
-    val penanganUtama = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
-    LaunchedEffect(item.key) {
-        var lagiJepret = false
-        while (true) {
-            val tv = viewCover?.videoSurfaceView as? android.view.TextureView
-            val tekstur = tv?.surfaceTexture
-            if (!lagiJepret && tv != null && tekstur != null && tv.isAvailable &&
-                (player.isPlaying || (bingkaiTampil == null && bingkaiMasuk == null)) &&
-                tv.width > 0
-            ) {
-                val lebarKecil = 112
-                val tinggiKecil = (lebarKecil * tv.height / tv.width).coerceIn(1, 200)
-                val tujuan = android.graphics.Bitmap.createBitmap(
-                    lebarKecil, tinggiKecil, android.graphics.Bitmap.Config.ARGB_8888,
-                )
-                lagiJepret = true
-                val permukaan = android.view.Surface(tekstur)
-                val gagal = runCatching {
-                    android.view.PixelCopy.request(permukaan, null, tujuan, { hasil ->
-                        if (hasil == android.view.PixelCopy.SUCCESS) {
-                            bingkaiMasuk = android.graphics.Bitmap.createBitmap(tujuan)
-                        }
-                        permukaan.release()
-                        lagiJepret = false
-                    }, penanganUtama)
-                }.isFailure
-                if (gagal) {
-                    permukaan.release()
-                    lagiJepret = false
-                }
-            }
-            delay(400)
-        }
-    }
+    // LATAR AMBIENT: thumbnail video diblur + zoom pelan bolak-balik.
+    // Jepret frame LIVE dibuang: nyomot frame dari permukaan video yg
+    // sama bikin tampilannya kedip-kedip di HP ini (PixelCopy, laporan
+    // user v1.43) & cara jepret sebelumnya ngelag. Thumbnail statis =
+    // nol jepret, nol ganggu decoder — dijamin stabil; pas ganti video
+    // tetap pudar silang dari Coil.
+    val transisiZoom = rememberInfiniteTransition(label = "zoomLatar")
+    val skalaLatar by transisiZoom.animateFloat(
+        initialValue = 1.6f,
+        targetValue = 1.78f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(16000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "skalaLatar",
+    )
     // === Kontrol disamakan PERSIS dgn pemutar audio (perintah user) ===
     var acakVideo by remember(item.key) { mutableStateOf(false) }
     var ulangVideo by remember(item.key) { mutableIntStateOf(0) }
@@ -929,45 +901,26 @@ private fun LayarModeMusikVideo(
         val modifLatar = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                scaleX = 1.6f
-                scaleY = 1.6f
+                scaleX = skalaLatar
+                scaleY = skalaLatar
                 if (Build.VERSION.SDK_INT >= 31) {
                     renderEffect = androidx.compose.ui.graphics.BlurEffect(
                         90f, 90f, androidx.compose.ui.graphics.TileMode.Clamp,
                     )
                 }
             }
-        val filterAmbient = ColorFilter.colorMatrix(
-            ColorMatrix().apply { setToSaturation(1.7f) }
+        AsyncImage(
+            model = coil.request.ImageRequest.Builder(contextMusik)
+                .data(item.thumbUrl.ifBlank { item.uri })
+                .crossfade(700)
+                .build(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifLatar,
+            colorFilter = ColorFilter.colorMatrix(
+                ColorMatrix().apply { setToSaturation(1.7f) }
+            ),
         )
-        val tampilKini = bingkaiTampil
-        val pudarKini = bingkaiPudar
-        if (tampilKini != null) {
-            Image(
-                bitmap = tampilKini.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = modifLatar,
-                colorFilter = filterAmbient,
-            )
-        }
-        if (pudarKini != null) {
-            Image(
-                bitmap = pudarKini.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = modifLatar.graphicsLayer { alpha = alphaPudar.value },
-                colorFilter = filterAmbient,
-            )
-        }
-        if (tampilKini == null && pudarKini == null && item.thumbUrl.isNotBlank()) {
-            AsyncImage(
-                model = item.thumbUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = modifLatar,
-            )
-        }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Row(
@@ -1012,7 +965,6 @@ private fun LayarModeMusikVideo(
                                     .inflate(R.layout.player_view, null) as PlayerView
                                 pv.player = player
                                 pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                viewCover = pv
                                 onDaftarView(pv)
                                 pv
                             },
@@ -1021,6 +973,7 @@ private fun LayarModeMusikVideo(
                     }
                     Spacer(Modifier.height(24.dp))
                     var menuLainVideo by remember { mutableStateOf(false) }
+                    var rincianVideo by remember { mutableStateOf(false) }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1092,8 +1045,45 @@ private fun LayarModeMusikVideo(
                                     },
                                     onClick = { ulangVideo = (ulangVideo + 1) % 3; menuLainVideo = false },
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Rincian") },
+                                    leadingIcon = { Icon(Icons.Filled.Info, null) },
+                                    onClick = { menuLainVideo = false; rincianVideo = true },
+                                )
                             }
                         }
+                    }
+                    if (rincianVideo) {
+                        AlertDialog(
+                            onDismissRequest = { rincianVideo = false },
+                            title = { Text("Rincian") },
+                            text = {
+                                Text(
+                                    buildString {
+                                        append("Nama: ${item.name}\n")
+                                        append("Jenis: Video\n")
+                                        append("Durasi: ${formatDurasi(durasiMs)}")
+                                        append(
+                                            "\nSumber: " + if (item.akunDrive.isNotBlank()) {
+                                                "Google Drive (${item.akunDrive})"
+                                            } else {
+                                                "Perangkat"
+                                            }
+                                        )
+                                        if (item.dateMillis > 0) {
+                                            append(
+                                                "\nTanggal: " + java.text.SimpleDateFormat(
+                                                    "d MMM yyyy", java.util.Locale("id", "ID"),
+                                                ).format(java.util.Date(item.dateMillis))
+                                            )
+                                        }
+                                    }
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { rincianVideo = false }) { Text("Tutup") }
+                            },
+                        )
                     }
                     Spacer(Modifier.height(14.dp))
                     // Seekbar TIPIS yg sama persis kayak pemutar audio
@@ -1266,6 +1256,7 @@ fun ViewerScreen(
     var infoItem by remember { mutableStateOf<MediaItem?>(null) }
     var modeMusikVideo by remember { mutableStateOf(false) }
     var sambungan by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    var kunciPager by remember { mutableStateOf(false) }
     val current = items.getOrNull(pagerState.currentPage)
     var rotasi by remember(current?.key) { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
@@ -1333,7 +1324,11 @@ fun ViewerScreen(
                 }
             },
       ) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = !modeMusikVideo && !kunciPager,
+        ) { page ->
             val item = items[page]
             if (item.isVideo) {
                 VideoPage(
@@ -1362,6 +1357,7 @@ fun ViewerScreen(
                     },
                     sambungan = sambungan,
                     onSambunganTerpakai = { sambungan = null },
+                    onKunciPager = { kunciPager = it },
                 )
             } else {
                 ZoomableImage(
