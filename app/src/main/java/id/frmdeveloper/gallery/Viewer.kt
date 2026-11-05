@@ -795,23 +795,37 @@ private fun LayarModeMusikVideo(
             volume = 0f
             repeatMode = Player.REPEAT_MODE_ONE
             prepare()
+            // Samakan posisi AWAL sebelum tampil — tanpa ini latar
+            // mulai dari 0 & buffering sendiri, telat beberapa detik
+            seekTo(player.currentPosition)
+            playWhenReady = muter
         }
     }
     DisposableEffect(item.key) {
         onDispose { playerLatar.release() }
     }
-    // Ikuti player utama: play/pause sama, drift > 1,2 dtk disamakan
+    // Ikuti player utama: play/pause sama; drift kecil digeser halus
+    // via kecepatan ±8% (nggak kelihatan di latar buram), drift besar
+    // di-seek. v1.33 longgar bgt (cek 1,5 dtk, toleransi 1,2 dtk)
+    // makanya latar telat sampai ±3 detik.
     LaunchedEffect(Unit) {
         while (true) {
             if (muter && !selesai) {
                 if (!playerLatar.isPlaying) playerLatar.play()
-                if (kotlin.math.abs(playerLatar.currentPosition - player.currentPosition) > 1_200) {
-                    playerLatar.seekTo(player.currentPosition)
+                val drift = playerLatar.currentPosition - player.currentPosition
+                when {
+                    drift > 600 || drift < -600 -> {
+                        playerLatar.setPlaybackSpeed(1f)
+                        playerLatar.seekTo(player.currentPosition)
+                    }
+                    drift > 80 -> playerLatar.setPlaybackSpeed(0.92f)
+                    drift < -80 -> playerLatar.setPlaybackSpeed(1.08f)
+                    else -> playerLatar.setPlaybackSpeed(1f)
                 }
             } else if (playerLatar.isPlaying) {
                 playerLatar.pause()
             }
-            delay(1500)
+            delay(300)
         }
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF101418))) {
