@@ -50,6 +50,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -122,6 +125,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -259,6 +264,77 @@ fun Modifier.animasiZoom(kunci: Any, membesar: Boolean): Modifier {
     return this.graphicsLayer { scaleX = skala.value; scaleY = skala.value }
 }
 
+
+/**
+ * Simpan & pulihkan posisi scroll ke SharedPreferences — SENGAJA tidak
+ * pakai rememberSaveable: cara itu (v1.37) ke-reset di HP user (transisi
+ * layar AnimatedContent + data yg dibangun belakangan). Cara manual ini
+ * kebal komposisi: pulihkan begitu data siap, simpan tiap berubah.
+ * Panggil dari DALAM cabang mode yg aktif biar scrollToItem cuma jalan
+ * pas daftarnya beneran tampil.
+ */
+@Composable
+private fun IngatPosisiGrid(
+    state: LazyGridState,
+    kunci: String,
+    jumlah: Int,
+    aktif: Boolean = true,
+) {
+    val ctx = LocalContext.current
+    val aktifKini by rememberUpdatedState(aktif)
+    var sudahPulih by remember(kunci) { mutableStateOf(false) }
+    LaunchedEffect(jumlah, kunci) {
+        if (!sudahPulih && jumlah > 0) {
+            val idx = UiStore.loadInt(ctx, "pos_i_" + kunci, 0)
+            val off = UiStore.loadInt(ctx, "pos_o_" + kunci, 0)
+            if (idx > 0) state.scrollToItem(minOf(idx, jumlah - 1), off)
+            sudahPulih = true
+        }
+    }
+    LaunchedEffect(state, kunci) {
+        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { (i, o) ->
+                if (sudahPulih && aktifKini) {
+                    delay(120)
+                    UiStore.saveInt(ctx, "pos_i_" + kunci, i)
+                    UiStore.saveInt(ctx, "pos_o_" + kunci, o)
+                }
+            }
+    }
+}
+
+@Composable
+private fun IngatPosisiList(
+    state: LazyListState,
+    kunci: String,
+    jumlah: Int,
+    aktif: Boolean = true,
+) {
+    val ctx = LocalContext.current
+    val aktifKini by rememberUpdatedState(aktif)
+    var sudahPulih by remember(kunci) { mutableStateOf(false) }
+    LaunchedEffect(jumlah, kunci) {
+        if (!sudahPulih && jumlah > 0) {
+            val idx = UiStore.loadInt(ctx, "pos_i_" + kunci, 0)
+            val off = UiStore.loadInt(ctx, "pos_o_" + kunci, 0)
+            if (idx > 0) state.scrollToItem(minOf(idx, jumlah - 1), off)
+            sudahPulih = true
+        }
+    }
+    LaunchedEffect(state, kunci) {
+        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { (i, o) ->
+                if (sudahPulih && aktifKini) {
+                    delay(120)
+                    UiStore.saveInt(ctx, "pos_i_" + kunci, i)
+                    UiStore.saveInt(ctx, "pos_o_" + kunci, o)
+                }
+            }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaGrid(
@@ -313,10 +389,8 @@ fun MediaGrid(
         with(kepadatan) { (konfigurasi.screenWidthDp.toFloat() / kolomKini).dp.roundToPx() }
             .coerceIn(96, 720)
     }
-    // Posisi scroll DISIMPAN per pemilik grid (timeline / tiap album):
-    // habis buka foto terus kembali, grid balik ke posisi terakhir,
-    // bukan ke atas (permintaan user — capek scroll dari awal)
-    val statusGrid = rememberSaveable(key = "posisi_" + kunciPosisi, saver = LazyGridState.Saver) { LazyGridState() }
+    val statusGrid = rememberLazyGridState()
+    IngatPosisiGrid(statusGrid, "grid_" + kunciPosisi, entries.size)
     LazyVerticalGrid(
         state = statusGrid,
         columns = GridCells.Fixed(kolomUntukLevel(level)),
@@ -586,8 +660,8 @@ fun AlbumsScreen(
     onOpenAlbum: (Album) -> Unit,
 ) {
     val ctx = LocalContext.current
-    val statusDaftarAlbum = rememberSaveable(key = "posisi_album_daftar", saver = LazyListState.Saver) { LazyListState() }
-    val statusGridAlbum = rememberSaveable(key = "posisi_album_grid", saver = LazyGridState.Saver) { LazyGridState() }
+    val statusDaftarAlbum = rememberLazyListState()
+    val statusGridAlbum = rememberLazyGridState()
     var kolom by rememberSaveable { mutableIntStateOf(UiStore.loadInt(ctx, "kolom_album", 3)) }
     // Mode DAFTAR ala Samsung: pinch out sampai MENTOK di grid -> berubah
     // jadi daftar (cover rounded gede di kiri + nama + jumlah). Pinch in
@@ -738,6 +812,7 @@ fun AlbumsScreen(
                 )
             }
         } else if (modeDaftar) {
+            IngatPosisiList(statusDaftarAlbum, "album_daftar", tampil.size, aktif = query.isBlank())
             LazyColumn(
                 state = statusDaftarAlbum,
                 modifier = Modifier
@@ -783,6 +858,7 @@ fun AlbumsScreen(
                 }
             }
         } else {
+            IngatPosisiGrid(statusGridAlbum, "album_grid", tampil.size, aktif = query.isBlank())
             LazyVerticalGrid(
                 state = statusGridAlbum,
                 columns = GridCells.Fixed(kolom),
@@ -1107,7 +1183,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.38",
+                sub = "Galeri FRM 1.39",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
@@ -1435,8 +1511,8 @@ fun AudioScreen(
         UiStore.saveInt(ctxAudio, "kolom_audio", kolom)
         UiStore.saveBool(ctxAudio, "daftar_audio", modeDaftar)
     }
-    val statusDaftarAudio = rememberSaveable(key = "posisi_audio_daftar", saver = LazyListState.Saver) { LazyListState() }
-    val statusGridAudio = rememberSaveable(key = "posisi_audio_grid", saver = LazyGridState.Saver) { LazyGridState() }
+    val statusDaftarAudio = rememberLazyListState()
+    val statusGridAudio = rememberLazyGridState()
     var query by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(izinAudio) {
         if (izinAudio) vm.reloadAudio()
@@ -1448,6 +1524,8 @@ fun AudioScreen(
             vm.audioFolders.filter { it.name.contains(query, ignoreCase = true) }
         }
     }
+    IngatPosisiList(statusDaftarAudio, "audio_daftar", tampil.size, aktif = query.isBlank())
+    IngatPosisiGrid(statusGridAudio, "audio_grid", tampil.size, aktif = query.isBlank())
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Audio", fontWeight = FontWeight.Bold) },
