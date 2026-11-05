@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -720,6 +721,7 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
                     .padding(bottom = if (diFolderAudio) 16.dp else 88.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -728,7 +730,10 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
         }
         if (showTabs && !selecting) {
             Box(
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 BottomPillBar(current = screen, onSelect = { screen = it })
@@ -759,6 +764,7 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
         SnackbarHost(
             hostState = snackbar,
             modifier = Modifier.align(Alignment.BottomCenter)
+                .navigationBarsPadding()
                 .padding(bottom = if (vm.laguDimainkan != null && showTabs) 156.dp else 84.dp),
         )
     }
