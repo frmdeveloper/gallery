@@ -1091,7 +1091,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.33",
+                sub = "Galeri FRM 1.36",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
@@ -1695,8 +1695,14 @@ fun AudioTracksScreen(
             ) {
                 items(tampil, key = { it.key }) { lagu ->
                     BarisLagu(vm, lagu) {
-                        vm.putarLagu(lagu, tampil)
-                        onOpenPlayer()
+                        if (vm.laguDimainkan?.key == lagu.key) {
+                            // Lagu yg SAMA lagi diputar: jangan diulang
+                            // dari awal — langsung masuk pemutarnya aja
+                            onOpenPlayer()
+                        } else {
+                            vm.putarLagu(lagu, tampil)
+                            onOpenPlayer()
+                        }
                     }
                 }
             }
