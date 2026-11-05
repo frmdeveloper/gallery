@@ -10,6 +10,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.material.icons.filled.RotateRight
 import android.graphics.BitmapFactory
@@ -76,6 +77,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -148,6 +150,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -169,6 +172,12 @@ import coil.size.Precision
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import coil.request.videoFrameMillis
+import android.provider.Settings
+import androidx.core.content.FileProvider
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
 
 // ---------- Helper berbagi ----------
 
@@ -678,6 +687,13 @@ fun AlbumsScreen(
     // diganti biar simpanan lama ("Urutan bawaan") nggak menang
     var urutan by rememberSaveable(key = "urutan_album_v2") { mutableIntStateOf(1) }
     var menuOpen by remember { mutableStateOf(false) }
+    // Urutan KUSTOM (urutan == 4): id album sesuai susunan user (seret)
+    var urutanKustom by remember {
+        mutableStateOf(
+            (UiStore.loadString(ctx, "urutan_album_kustom", "") ?: "")
+                .split(",").filter { it.isNotBlank() }
+        )
+    }
 
     val albums = remember(vm.localAlbums, vm.driveAlbums, vm.favorites, vm.media, vm.driveItems) {
         buildList {
@@ -687,16 +703,106 @@ fun AlbumsScreen(
             addAll(vm.localAlbums)
         }.map { it.denganIkon(ctx) }
     }
-    val tampil = remember(albums, query, urutan) {
+    val tampil = remember(albums, query, urutan, urutanKustom) {
         val saring = if (query.isBlank()) albums
         else albums.filter { it.name.contains(query, ignoreCase = true) }
         when (urutan) {
             1 -> saring.sortedBy { it.name.lowercase() }
             2 -> saring.sortedByDescending { it.count }
             3 -> saring.sortedByDescending { a -> a.items.maxOfOrNull { it.dateMillis } ?: 0L }
+            4 -> {
+                val petaKustom = urutanKustom.withIndex().associate { (i, id) -> id to i }
+                saring.sortedBy { petaKustom[it.id] ?: Int.MAX_VALUE }
+            }
             else -> saring
         }
     }
+
+    // === Seret album (tekan-tahan) buat mindah urutan (perintah user) ===
+    val tampilKini by rememberUpdatedState(tampil)
+    var idSeret by remember { mutableStateOf<String?>(null) }
+    var geserSeret by remember { mutableStateOf(Offset.Zero) }
+    var asalSeret by remember { mutableStateOf<IntOffset?>(null) }
+    fun simpanKustom(ids: List<String>) {
+        urutanKustom = ids
+        UiStore.saveString(ctx, "urutan_album_kustom", ids.joinToString(","))
+    }
+    fun mulaiSeret(album: Album) {
+        if (query.isNotBlank() || idSeret != null) return
+        if (urutan != 4 || urutanKustom.isEmpty()) {
+            urutan = 4
+            simpanKustom(tampilKini.map { it.id })
+        }
+        val infoGrid = statusGridAlbum.layoutInfo.visibleItemsInfo.firstOrNull { it.key == album.id }
+        val infoDaftar = statusDaftarAlbum.layoutInfo.visibleItemsInfo.firstOrNull { it.key == album.id }
+        idSeret = album.id
+        asalSeret = when {
+            infoGrid != null -> infoGrid.offset
+            infoDaftar != null -> IntOffset(0, infoDaftar.offset)
+            else -> null
+        }
+        geserSeret = Offset.Zero
+    }
+    fun prosesSeret() {
+        val id = idSeret ?: return
+        val asal = asalSeret ?: return
+        val info = if (modeDaftar) {
+            val lebarDaftar = statusDaftarAlbum.layoutInfo.viewportSize.width
+            statusDaftarAlbum.layoutInfo.visibleItemsInfo.map {
+                Triple(it.key, IntOffset(0, it.offset), IntSize(lebarDaftar, it.size))
+            }
+        } else {
+            statusGridAlbum.layoutInfo.visibleItemsInfo.map { Triple(it.key, it.offset, it.size) }
+        }
+        val punyaku = info.firstOrNull { it.first == id } ?: return
+        val tengahX = asal.x + punyaku.third.width / 2 + geserSeret.x
+        val tengahY = asal.y + punyaku.third.height / 2 + geserSeret.y
+        val target = info.firstOrNull { t ->
+            t.first != id &&
+                tengahX >= t.second.x && tengahX < t.second.x + t.third.width &&
+                tengahY >= t.second.y && tengahY < t.second.y + t.third.height
+        } ?: return
+        val ids = tampilKini.map { it.id }.toMutableList()
+        val dari = ids.indexOf(id)
+        val ke = ids.indexOf(target.first as String)
+        if (dari < 0 || ke < 0 || dari == ke) return
+        ids.removeAt(dari)
+        ids.add(ke, id)
+        geserSeret = Offset(
+            geserSeret.x + asal.x - target.second.x,
+            geserSeret.y + asal.y - target.second.y,
+        )
+        asalSeret = target.second
+        simpanKustom(ids)
+    }
+    fun selesaiSeret() {
+        idSeret = null
+        geserSeret = Offset.Zero
+        asalSeret = null
+    }
+    fun Modifier.gayaSeret(album: Album): Modifier = this
+        .zIndex(if (album.id == idSeret) 2f else 0f)
+        .graphicsLayer {
+            if (album.id == idSeret) {
+                translationX = geserSeret.x
+                translationY = geserSeret.y
+                scaleX = 1.04f
+                scaleY = 1.04f
+                alpha = 0.92f
+            }
+        }
+        .pointerInput(album.id) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { mulaiSeret(album) },
+                onDrag = { change, jumlah ->
+                    change.consume()
+                    geserSeret += jumlah
+                    prosesSeret()
+                },
+                onDragEnd = { selesaiSeret() },
+                onDragCancel = { selesaiSeret() },
+            )
+        }
 
     @Composable
     fun sampul(album: Album, ukuranPx: Int, modifier: Modifier) {
@@ -786,6 +892,10 @@ fun AlbumsScreen(
                             text = { Text((if (urutan == 3) "✓ " else "") + "Terbaru") },
                             onClick = { menuOpen = false; urutan = 3 },
                         )
+                        DropdownMenuItem(
+                            text = { Text((if (urutan == 4) "✓ " else "") + "Kustom") },
+                            onClick = { menuOpen = false; urutan = 4 },
+                        )
                     }
                 }
             },
@@ -816,6 +926,7 @@ fun AlbumsScreen(
             IngatPosisiList(statusDaftarAlbum, "album_daftar", tampil.size, aktif = query.isBlank())
             LazyColumn(
                 state = statusDaftarAlbum,
+                userScrollEnabled = idSeret == null,
                 modifier = Modifier
                     .fillMaxSize()
                     .animasiZoom(kunci = modeDaftar, membesar = false)
@@ -831,8 +942,8 @@ fun AlbumsScreen(
             ) {
                 items(tampil, key = { it.id }) { album ->
                     Row(
-                        modifier = Modifier
-                            .animateItem(placementSpec = spring(dampingRatio = 0.9f, stiffness = 300f))
+                        modifier = (if (album.id == idSeret) Modifier else Modifier.animateItem(placementSpec = spring(dampingRatio = 0.9f, stiffness = 300f)))
+                            .gayaSeret(album)
                             .fillMaxWidth()
                             .combinedClickable(onClick = { onOpenAlbum(album) }, onLongClick = {})
                             .padding(horizontal = 16.dp, vertical = 7.dp),
@@ -862,6 +973,7 @@ fun AlbumsScreen(
             IngatPosisiGrid(statusGridAlbum, "album_grid", tampil.size, aktif = query.isBlank())
             LazyVerticalGrid(
                 state = statusGridAlbum,
+                userScrollEnabled = idSeret == null,
                 columns = GridCells.Fixed(kolom),
                 modifier = Modifier
                     .fillMaxSize()
@@ -880,8 +992,8 @@ fun AlbumsScreen(
             ) {
                 items(tampil, key = { it.id }) { album ->
                     Column(
-                        modifier = Modifier
-                            .animateItem(placementSpec = spring(dampingRatio = 0.9f, stiffness = 300f))
+                        modifier = (if (album.id == idSeret) Modifier else Modifier.animateItem(placementSpec = spring(dampingRatio = 0.9f, stiffness = 300f)))
+                            .gayaSeret(album)
                             .combinedClickable(onClick = { onOpenAlbum(album) }, onLongClick = {})
                     ) {
                         sampul(
@@ -1058,6 +1170,112 @@ fun MenuScreen(
 ) {
     var tentangOpen by remember { mutableStateOf(false) }
     var akunKeluar by remember { mutableStateOf<String?>(null) }
+    val ctxMenu = LocalContext.current
+    // === Pembaruan mandiri: cek rilis GitHub -> unduh APK -> pasang ===
+    var statusUpdate by remember { mutableStateOf<String?>(null) }
+    var sibukUpdate by remember { mutableStateOf(false) }
+    val lingkupMenu = rememberCoroutineScope()
+    suspend fun jalankanPembaruan() {
+        try {
+            statusUpdate = "Memeriksa pembaruan…"
+            val (versiBaru, urlApk, ukuranApk) = withContext(Dispatchers.IO) {
+                val koneksi = (URL("https://api.github.com/repos/frmdeveloper/gallery/releases/latest")
+                    .openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 20000
+                    readTimeout = 20000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "GaleriFRM")
+                }
+                val teks = koneksi.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(teks)
+                val tag = json.getString("tag_name").removePrefix("v")
+                val aset = json.getJSONArray("assets")
+                var url = ""
+                var ukuran = 0L
+                for (i in 0 until aset.length()) {
+                    val a = aset.getJSONObject(i)
+                    if (a.getString("name").endsWith(".apk")) {
+                        url = a.getString("browser_download_url")
+                        ukuran = a.getLong("size")
+                        break
+                    }
+                }
+                Triple(tag, url, ukuran)
+            }
+            val terpasang = runCatching {
+                ctxMenu.packageManager.getPackageInfo(ctxMenu.packageName, 0).versionName ?: "0"
+            }.getOrNull() ?: "0"
+            if (urlApk.isBlank() || !versiLebihBaru(versiBaru, terpasang)) {
+                vm.beriTahu("Udah versi terbaru ($terpasang)")
+                statusUpdate = null
+                return
+            }
+            if (!ctxMenu.packageManager.canRequestPackageInstalls()) {
+                vm.beriTahu("Izinkan pasang aplikasi dari sumber ini dulu, terus ketuk lagi")
+                runCatching {
+                    ctxMenu.startActivity(
+                        Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + ctxMenu.packageName),
+                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                statusUpdate = null
+                return
+            }
+            val berkas = File(ctxMenu.cacheDir, "update/GaleriFRM-v$versiBaru.apk")
+            if (!berkas.exists() || berkas.length() != ukuranApk) {
+                statusUpdate = "Mengunduh v$versiBaru…"
+                withContext(Dispatchers.IO) {
+                    berkas.parentFile?.mkdirs()
+                    val koneksi = (URL(urlApk).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 20000
+                        readTimeout = 30000
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "GaleriFRM")
+                    }
+                    koneksi.inputStream.use { masuk ->
+                        berkas.outputStream().use { keluar ->
+                            val penyangga = ByteArray(64 * 1024)
+                            var total = 0L
+                            var persenLapor = -1
+                            while (true) {
+                                val n = masuk.read(penyangga)
+                                if (n < 0) break
+                                keluar.write(penyangga, 0, n)
+                                total += n
+                                if (ukuranApk > 0) {
+                                    val persen = (total * 100 / ukuranApk).toInt()
+                                    if (persen != persenLapor) {
+                                        persenLapor = persen
+                                        withContext(Dispatchers.Main) {
+                                            statusUpdate = "Mengunduh v$versiBaru… $persen%"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            statusUpdate = null
+            val uriApk = FileProvider.getUriForFile(
+                ctxMenu, "id.frmdeveloper.gallery.fileprovider", berkas,
+            )
+            ctxMenu.startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uriApk, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        } catch (e: Exception) {
+            vm.beriTahu("Gagal memeriksa pembaruan: ${e.message ?: "jaringan bermasalah"}")
+            statusUpdate = null
+        } finally {
+            sibukUpdate = false
+        }
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -1184,13 +1402,33 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.43",
+                sub = "Galeri FRM 1.47",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
                     Icons.Filled.Info, null,
                     tint = WarnaIkonMenu, modifier = Modifier.size(22.dp),
                 )
+            }
+            PemisahMenu()
+            BarisMenu(
+                judul = "Pembaruan aplikasi",
+                sub = statusUpdate ?: "Ketuk buat memeriksa — unduh & pasang langsung",
+                onClick = {
+                    if (!sibukUpdate) {
+                        sibukUpdate = true
+                        lingkupMenu.launch { jalankanPembaruan() }
+                    }
+                },
+            ) {
+                if (sibukUpdate) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(
+                        Icons.Filled.Update, null,
+                        tint = WarnaIkonMenu, modifier = Modifier.size(22.dp),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(28.dp))
@@ -2757,4 +2995,15 @@ private fun LapisanPotong(
             )
         }
     }
+}
+
+private fun versiLebihBaru(baru: String, lama: String): Boolean {
+    val b = baru.trim().removePrefix("v").split(".").map { it.toIntOrNull() ?: 0 }
+    val l = lama.trim().removePrefix("v").split(".").map { it.toIntOrNull() ?: 0 }
+    for (i in 0 until maxOf(b.size, l.size)) {
+        val x = b.getOrElse(i) { 0 }
+        val y = l.getOrElse(i) { 0 }
+        if (x != y) return x > y
+    }
+    return false
 }
