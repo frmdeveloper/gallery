@@ -1,0 +1,17 @@
+# Salin file ini jadi `local.properties` dan isi dengan OAuth client-mu sendiri.
+# File local.properties TIDAK masuk repo (lihat .gitignore).
+#
+# Cara dapat client id + secret:
+# 1. Google Cloud Console -> buat project -> aktifkan Google Drive API.
+# 2. OAuth consent screen -> isi info aplikasi.
+# 3. Credentials -> Create Credentials -> OAuth client ID -> tipe "Desktop app".
+# 4. Salin Client ID dan Client Secret ke bawah ini.
+#
+# Login di aplikasi memakai loopback OAuth (browser -> 127.0.0.1 port acak),
+# jadi tidak ada redirect URI tetap yang perlu didaftarkan.
+
+drive.clientId=
+drive.clientSecret=
+
+# (Opsional) lokasi Android SDK kalau bukan lokasi bawaan:
+# sdk.dir=/path/ke/Android/Sdk
