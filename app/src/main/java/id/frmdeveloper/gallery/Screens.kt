@@ -96,6 +96,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -1183,7 +1184,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.39",
+                sub = "Galeri FRM 1.41",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
@@ -2157,6 +2158,7 @@ fun PlayerScreen(
                         }
                     }
                     Spacer(Modifier.height(24.dp))
+                    var menuLainLagu by remember { mutableStateOf(false) }
                     // Judul + artis (kiri) • ikon gelombang (kanan)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2179,6 +2181,58 @@ fun PlayerScreen(
                                 Icons.Filled.GraphicEq, "Lirik",
                                 tint = Color.White.copy(alpha = 0.75f),
                             )
+                        }
+                        Box {
+                            IconButton(onClick = { menuLainLagu = true }) {
+                                Icon(
+                                    Icons.Filled.MoreVert, "Lainnya",
+                                    tint = Color.White.copy(alpha = 0.75f),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuLainLagu,
+                                onDismissRequest = { menuLainLagu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Acak") },
+                                    leadingIcon = { Icon(Icons.Filled.Shuffle, null) },
+                                    trailingIcon = if (vm.acakLagu) {
+                                        { Icon(Icons.Filled.Check, null) }
+                                    } else null,
+                                    onClick = { vm.toggleAcakLagu(); menuLainLagu = false },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Favorit") },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (lagu.key in vm.favorites) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                            null,
+                                        )
+                                    },
+                                    trailingIcon = if (lagu.key in vm.favorites) {
+                                        { Icon(Icons.Filled.Check, null) }
+                                    } else null,
+                                    onClick = { vm.toggleFavoritLagu(lagu); menuLainLagu = false },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "Putar ulang: " + when (vm.ulangLagu) {
+                                                1 -> "Semua"
+                                                2 -> "Satu"
+                                                else -> "Mati"
+                                            }
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (vm.ulangLagu == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                                            null,
+                                        )
+                                    },
+                                    onClick = { vm.siklusUlangLagu(); menuLainLagu = false },
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(14.dp))
@@ -2207,33 +2261,20 @@ fun PlayerScreen(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
-                    // Transport: acak • bintang • ⏮ • ⏸ GEDE • ⏭ • ulang
+                    // Transport: ⏮ • ⏯ • ⏭ DI TENGAH (perintah user);
+                    // acak/favorit/ulang pindah ke menu ⋮ di samping Lirik
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.Center,
                     ) {
-                        IconButton(onClick = { vm.toggleAcakLagu() }, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                Icons.Filled.Shuffle, "Acak",
-                                tint = if (vm.acakLagu) Color.White else Color.White.copy(alpha = 0.45f),
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                        IconButton(onClick = { vm.toggleFavoritLagu(lagu) }, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                if (lagu.key in vm.favorites) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                "Favorit",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp),
-                            )
-                        }
                         IconButton(onClick = { vm.laguSebelum() }, modifier = Modifier.size(56.dp)) {
                             Icon(
                                 Icons.Filled.SkipPrevious, "Sebelumnya",
                                 tint = Color.White, modifier = Modifier.size(40.dp),
                             )
                         }
+                        Spacer(Modifier.width(28.dp))
                         IconButton(onClick = { vm.toggleLagu() }, modifier = Modifier.size(72.dp)) {
                             Icon(
                                 if (vm.muterLagu) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -2241,18 +2282,11 @@ fun PlayerScreen(
                                 tint = Color.White, modifier = Modifier.size(56.dp),
                             )
                         }
+                        Spacer(Modifier.width(28.dp))
                         IconButton(onClick = { vm.laguBerikut() }, modifier = Modifier.size(56.dp)) {
                             Icon(
                                 Icons.Filled.SkipNext, "Berikutnya",
                                 tint = Color.White, modifier = Modifier.size(40.dp),
-                            )
-                        }
-                        IconButton(onClick = { vm.siklusUlangLagu() }, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                if (vm.ulangLagu == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
-                                "Ulang",
-                                tint = if (vm.ulangLagu > 0) Color.White else Color.White.copy(alpha = 0.45f),
-                                modifier = Modifier.size(20.dp),
                             )
                         }
                     }

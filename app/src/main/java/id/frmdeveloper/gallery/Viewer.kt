@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Fullscreen
@@ -824,20 +825,35 @@ private fun LayarModeMusikVideo(
     val contextMusik = LocalContext.current
     var viewCover by remember { mutableStateOf<PlayerView?>(null) }
     var bingkaiLatar by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val penanganUtama = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     LaunchedEffect(item.key) {
+        var lagiJepret = false
         while (true) {
             val tv = viewCover?.videoSurfaceView as? android.view.TextureView
-            if (tv != null && tv.isAvailable && player.isPlaying && tv.width > 0) {
+            val tekstur = tv?.surfaceTexture
+            if (!lagiJepret && tv != null && tekstur != null && tv.isAvailable &&
+                player.isPlaying && tv.width > 0
+            ) {
                 val lebarKecil = 112
                 val tinggiKecil = (lebarKecil * tv.height / tv.width).coerceIn(1, 200)
-                val hasil = runCatching {
-                    tv.getBitmap(
-                        android.graphics.Bitmap.createBitmap(
-                            lebarKecil, tinggiKecil, android.graphics.Bitmap.Config.ARGB_8888,
-                        )
-                    )
-                }.getOrNull()
-                if (hasil != null) bingkaiLatar = hasil
+                val tujuan = android.graphics.Bitmap.createBitmap(
+                    lebarKecil, tinggiKecil, android.graphics.Bitmap.Config.ARGB_8888,
+                )
+                lagiJepret = true
+                val permukaan = android.view.Surface(tekstur)
+                val gagal = runCatching {
+                    android.view.PixelCopy.request(permukaan, null, tujuan, { hasil ->
+                        if (hasil == android.view.PixelCopy.SUCCESS) {
+                            bingkaiLatar = android.graphics.Bitmap.createBitmap(tujuan)
+                        }
+                        permukaan.release()
+                        lagiJepret = false
+                    }, penanganUtama)
+                }.isFailure
+                if (gagal) {
+                    permukaan.release()
+                    lagiJepret = false
+                }
             }
             delay(450)
         }
@@ -962,6 +978,7 @@ private fun LayarModeMusikVideo(
                         )
                     }
                     Spacer(Modifier.height(24.dp))
+                    var menuLainVideo by remember { mutableStateOf(false) }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -982,6 +999,58 @@ private fun LayarModeMusikVideo(
                                 Icons.Filled.GraphicEq, "Lirik",
                                 tint = Color.White.copy(alpha = 0.75f),
                             )
+                        }
+                        Box {
+                            IconButton(onClick = { menuLainVideo = true }) {
+                                Icon(
+                                    Icons.Filled.MoreVert, "Lainnya",
+                                    tint = Color.White.copy(alpha = 0.75f),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuLainVideo,
+                                onDismissRequest = { menuLainVideo = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Acak") },
+                                    leadingIcon = { Icon(Icons.Filled.Shuffle, null) },
+                                    trailingIcon = if (acakVideo) {
+                                        { Icon(Icons.Filled.Check, null) }
+                                    } else null,
+                                    onClick = { acakVideo = !acakVideo; menuLainVideo = false },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Favorit") },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (favorit) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                            null,
+                                        )
+                                    },
+                                    trailingIcon = if (favorit) {
+                                        { Icon(Icons.Filled.Check, null) }
+                                    } else null,
+                                    onClick = { onToggleFavorite(); menuLainVideo = false },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "Putar ulang: " + when (ulangVideo) {
+                                                1 -> "Semua"
+                                                2 -> "Satu"
+                                                else -> "Mati"
+                                            }
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (ulangVideo == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                                            null,
+                                        )
+                                    },
+                                    onClick = { ulangVideo = (ulangVideo + 1) % 3; menuLainVideo = false },
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(14.dp))
@@ -1010,27 +1079,13 @@ private fun LayarModeMusikVideo(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
-                    // Transport PERSIS pemutar audio: acak • bintang • ⏮ • ⏯ GEDE • ⏭ • ulang
+                    // Transport: ⏮ • ⏯ • ⏭ DI TENGAH (perintah user);
+                    // acak/favorit/ulang pindah ke menu ⋮ di samping Lirik
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.Center,
                     ) {
-                        IconButton(onClick = { acakVideo = !acakVideo }, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                Icons.Filled.Shuffle, "Acak",
-                                tint = if (acakVideo) Color.White else Color.White.copy(alpha = 0.45f),
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                        IconButton(onClick = onToggleFavorite, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                if (favorit) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                "Favorit",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp),
-                            )
-                        }
                         IconButton(
                             onClick = { if (acakVideo) onLompatAcak() else onPrev() },
                             enabled = adaPrev || acakVideo,
@@ -1042,6 +1097,7 @@ private fun LayarModeMusikVideo(
                                 modifier = Modifier.size(40.dp),
                             )
                         }
+                        Spacer(Modifier.width(28.dp))
                         IconButton(
                             onClick = {
                                 if (selesai) {
@@ -1061,6 +1117,7 @@ private fun LayarModeMusikVideo(
                                 tint = Color.White, modifier = Modifier.size(56.dp),
                             )
                         }
+                        Spacer(Modifier.width(28.dp))
                         IconButton(
                             onClick = { if (acakVideo) onLompatAcak() else onNext() },
                             enabled = adaNext || acakVideo,
@@ -1070,14 +1127,6 @@ private fun LayarModeMusikVideo(
                                 Icons.Filled.SkipNext, "Berikutnya",
                                 tint = Color.White.copy(alpha = if (adaNext || acakVideo) 1f else 0.35f),
                                 modifier = Modifier.size(40.dp),
-                            )
-                        }
-                        IconButton(onClick = { ulangVideo = (ulangVideo + 1) % 3 }, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                if (ulangVideo == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
-                                "Ulang",
-                                tint = if (ulangVideo > 0) Color.White else Color.White.copy(alpha = 0.45f),
-                                modifier = Modifier.size(20.dp),
                             )
                         }
                     }
