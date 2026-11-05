@@ -107,6 +107,8 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.Job
@@ -824,7 +826,22 @@ private fun LayarModeMusikVideo(
     // tetap tampil (memang begitu seharusnya latar).
     val contextMusik = LocalContext.current
     var viewCover by remember { mutableStateOf<PlayerView?>(null) }
-    var bingkaiLatar by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    // LATAR AMBIENT (pilihan user): frame kecil dari video diganti pakai
+    // PUDAR SILANG (crossfade) beranimasi 60fps — sumbernya memang cuma
+    // berubah ~1x/detik, tapi pudaran halusnya bikin latar terasa ngalir,
+    // nggak patah-patah kayak slideshow (cara sebelumnya terasa ngelag).
+    var bingkaiMasuk by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var bingkaiTampil by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var bingkaiPudar by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val alphaPudar = remember { Animatable(0f) }
+    LaunchedEffect(bingkaiMasuk) {
+        val masuk = bingkaiMasuk ?: return@LaunchedEffect
+        bingkaiPudar = masuk
+        alphaPudar.snapTo(0f)
+        alphaPudar.animateTo(1f, animationSpec = tween(800))
+        bingkaiTampil = masuk
+        bingkaiPudar = null
+    }
     val penanganUtama = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     LaunchedEffect(item.key) {
         var lagiJepret = false
@@ -832,7 +849,8 @@ private fun LayarModeMusikVideo(
             val tv = viewCover?.videoSurfaceView as? android.view.TextureView
             val tekstur = tv?.surfaceTexture
             if (!lagiJepret && tv != null && tekstur != null && tv.isAvailable &&
-                player.isPlaying && tv.width > 0
+                (player.isPlaying || (bingkaiTampil == null && bingkaiMasuk == null)) &&
+                tv.width > 0
             ) {
                 val lebarKecil = 112
                 val tinggiKecil = (lebarKecil * tv.height / tv.width).coerceIn(1, 200)
@@ -844,7 +862,7 @@ private fun LayarModeMusikVideo(
                 val gagal = runCatching {
                     android.view.PixelCopy.request(permukaan, null, tujuan, { hasil ->
                         if (hasil == android.view.PixelCopy.SUCCESS) {
-                            bingkaiLatar = android.graphics.Bitmap.createBitmap(tujuan)
+                            bingkaiMasuk = android.graphics.Bitmap.createBitmap(tujuan)
                         }
                         permukaan.release()
                         lagiJepret = false
@@ -855,7 +873,7 @@ private fun LayarModeMusikVideo(
                     lagiJepret = false
                 }
             }
-            delay(450)
+            delay(900)
         }
     }
     // === Kontrol disamakan PERSIS dgn pemutar audio (perintah user) ===
@@ -899,7 +917,6 @@ private fun LayarModeMusikVideo(
     Box(Modifier.fillMaxSize().background(Color(0xFF101418))) {
         // Latar: frame video utama (bitmap kecil) diburamkan memenuhi
         // layar; sebelum frame pertama siap, pakai thumbnail Drive.
-        val bingkai = bingkaiLatar
         val modifLatar = Modifier
             .fillMaxSize()
             .graphicsLayer {
@@ -911,14 +928,30 @@ private fun LayarModeMusikVideo(
                     )
                 }
             }
-        if (bingkai != null) {
+        val filterAmbient = ColorFilter.colorMatrix(
+            ColorMatrix().apply { setToSaturation(1.7f) }
+        )
+        val tampilKini = bingkaiTampil
+        val pudarKini = bingkaiPudar
+        if (tampilKini != null) {
             Image(
-                bitmap = bingkai.asImageBitmap(),
+                bitmap = tampilKini.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = modifLatar,
+                colorFilter = filterAmbient,
             )
-        } else if (item.thumbUrl.isNotBlank()) {
+        }
+        if (pudarKini != null) {
+            Image(
+                bitmap = pudarKini.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifLatar.graphicsLayer { alpha = alphaPudar.value },
+                colorFilter = filterAmbient,
+            )
+        }
+        if (tampilKini == null && pudarKini == null && item.thumbUrl.isNotBlank()) {
             AsyncImage(
                 model = item.thumbUrl,
                 contentDescription = null,
