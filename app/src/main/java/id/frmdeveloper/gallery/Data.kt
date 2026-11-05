@@ -486,3 +486,10 @@ object PosisiVideoStore {
         }
     }
 }
+
+/** "7,1 MB" / "812 KB" buat dialog Rincian. */
+fun formatUkuranBerkas(b: Long): String = when {
+    b >= 1_000_000L -> String.format(java.util.Locale("id", "ID"), "%.1f MB", b / 1_000_000.0)
+    b >= 1_000L -> String.format(java.util.Locale("id", "ID"), "%.1f KB", b / 1_000.0)
+    else -> "$b B"
+}
