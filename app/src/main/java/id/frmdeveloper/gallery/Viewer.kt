@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animate
@@ -841,6 +842,7 @@ private fun LayarModeMusikVideo(
     // tanpa stream/decoder tambahan. Pas video jeda, frame terakhir
     // tetap tampil (memang begitu seharusnya latar).
     val contextMusik = LocalContext.current
+    var viewCover by remember { mutableStateOf<PlayerView?>(null) }
     // LATAR AMBIENT: thumbnail video diblur + zoom pelan bolak-balik.
     // Jepret frame LIVE dibuang: nyomot frame dari permukaan video yg
     // sama bikin tampilannya kedip-kedip di HP ini (PixelCopy, laporan
@@ -857,6 +859,61 @@ private fun LayarModeMusikVideo(
         ),
         label = "skalaLatar",
     )
+    // GLOW ALA YOUTUBE (perintah user, delay rapat): warna rata-rata
+    // frame video diambil kecil (48x27) dari TextureView cover tiap
+    // 350ms — cara baca bawaan view, TANPA PixelCopy/Surface tambahan
+    // (itu yg bikin kedip). Warnanya dianimasikan 500ms pakai
+    // animateColorAsState, jadi perubahannya ngalir halus 60fps.
+    var warnaMentah by remember(item.key) { mutableStateOf<Color?>(null) }
+    val warnaGlow by animateColorAsState(
+        targetValue = warnaMentah ?: Color.Transparent,
+        animationSpec = tween(500),
+        label = "warnaGlow",
+    )
+    LaunchedEffect(item.key) {
+        while (true) {
+            val tv = viewCover?.videoSurfaceView as? android.view.TextureView
+            if (tv != null && tv.isAvailable && player.isPlaying && tv.width > 0) {
+                val kecil = android.graphics.Bitmap.createBitmap(
+                    48, 27, android.graphics.Bitmap.Config.ARGB_8888,
+                )
+                val hasil = runCatching { tv.getBitmap(kecil) }.getOrNull()
+                if (hasil != null) {
+                    var r = 0L
+                    var g = 0L
+                    var b = 0L
+                    var n = 0
+                    var x = 0
+                    while (x < hasil.width) {
+                        var y = 0
+                        while (y < hasil.height) {
+                            val px = hasil.getPixel(x, y)
+                            r += android.graphics.Color.red(px)
+                            g += android.graphics.Color.green(px)
+                            b += android.graphics.Color.blue(px)
+                            n++
+                            y += 2
+                        }
+                        x += 2
+                    }
+                    if (n > 0) {
+                        var mr = (r / n).toInt()
+                        var mg = (g / n).toInt()
+                        var mb = (b / n).toInt()
+                        val maks = maxOf(mr, mg, mb)
+                        if (maks >= 24) {
+                            val skala = 217f / maks
+                            mr = (mr * skala).toInt().coerceIn(0, 255)
+                            mg = (mg * skala).toInt().coerceIn(0, 255)
+                            mb = (mb * skala).toInt().coerceIn(0, 255)
+                        }
+                        warnaMentah = Color(mr, mg, mb)
+                    }
+                }
+            }
+            delay(350)
+        }
+    }
     // === Kontrol disamakan PERSIS dgn pemutar audio (perintah user) ===
     var acakVideo by remember(item.key) { mutableStateOf(false) }
     var ulangVideo by remember(item.key) { mutableIntStateOf(0) }
@@ -921,6 +978,19 @@ private fun LayarModeMusikVideo(
                 ColorMatrix().apply { setToSaturation(1.7f) }
             ),
         )
+        // Lapisan glow: cahaya warna video (dianimasikan) di atas thumbnail
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            warnaGlow.copy(alpha = 0.5f),
+                            Color.Transparent,
+                        ),
+                    )
+                ),
+        )
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Row(
@@ -965,6 +1035,7 @@ private fun LayarModeMusikVideo(
                                     .inflate(R.layout.player_view, null) as PlayerView
                                 pv.player = player
                                 pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                viewCover = pv
                                 onDaftarView(pv)
                                 pv
                             },
