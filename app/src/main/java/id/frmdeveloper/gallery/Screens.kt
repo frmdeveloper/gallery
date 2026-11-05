@@ -178,6 +178,8 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 
 // ---------- Helper berbagi ----------
 
@@ -727,8 +729,10 @@ fun AlbumsScreen(
         urutanKustom = ids
         UiStore.saveString(ctx, "urutan_album_kustom", ids.joinToString(","))
     }
+    val haptikAlbum = LocalHapticFeedback.current
     fun mulaiSeret(album: Album) {
         if (query.isNotBlank() || idSeret != null) return
+        haptikAlbum.performHapticFeedback(HapticFeedbackType.LongPress)
         if (urutan != 4 || urutanKustom.isEmpty()) {
             urutan = 4
             simpanKustom(tampilKini.map { it.id })
@@ -945,7 +949,7 @@ fun AlbumsScreen(
                         modifier = (if (album.id == idSeret) Modifier else Modifier.animateItem(placementSpec = spring(dampingRatio = 0.9f, stiffness = 300f)))
                             .gayaSeret(album)
                             .fillMaxWidth()
-                            .combinedClickable(onClick = { onOpenAlbum(album) }, onLongClick = {})
+                            .clickable { onOpenAlbum(album) }
                             .padding(horizontal = 16.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -994,7 +998,7 @@ fun AlbumsScreen(
                     Column(
                         modifier = (if (album.id == idSeret) Modifier else Modifier.animateItem(placementSpec = spring(dampingRatio = 0.9f, stiffness = 300f)))
                             .gayaSeret(album)
-                            .combinedClickable(onClick = { onOpenAlbum(album) }, onLongClick = {})
+                            .clickable { onOpenAlbum(album) }
                     ) {
                         sampul(
                             album, 512,
@@ -1402,7 +1406,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.47",
+                sub = "Galeri FRM 1.48",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
