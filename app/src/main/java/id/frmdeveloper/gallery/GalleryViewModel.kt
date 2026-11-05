@@ -323,7 +323,7 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
     // jalan di latar + ada notifikasi; di sini cuma MediaController-nya.
     private var kontrolerFuture: ListenableFuture<MediaController>? = null
     private var kontroler: MediaController? = null
-    private var putarTertunda: Pair<AudioItem, List<AudioItem>>? = null
+    private var putarTertunda: Triple<AudioItem, List<AudioItem>, Long>? = null
 
     var audioFolders: List<AudioFolder> by mutableStateOf(emptyList())
         private set
@@ -420,20 +420,20 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
                 if (k.mediaItemCount > 0) {
                     antreanLagu.getOrNull(k.currentMediaItemIndex)?.let { laguDimainkan = it }
                 }
-                putarTertunda?.let { (item, antrean) -> putarLagu(item, antrean) }
+                putarTertunda?.let { (item, antrean, pos) -> putarLagu(item, antrean, pos) }
                 putarTertunda = null
             }
         }, ContextCompat.getMainExecutor(app))
     }
 
-    fun putarLagu(item: AudioItem, antrean: List<AudioItem>) {
+    fun putarLagu(item: AudioItem, antrean: List<AudioItem>, posisiAwalMs: Long = 0L) {
         antreanLagu = antrean.ifEmpty { listOf(item) }
         val idx = antreanLagu.indexOfFirst { it.key == item.key }.coerceAtLeast(0)
         laguDimainkan = antreanLagu[idx]
         val p = kontroler
         if (p == null) {
             // Controller belum tersambung (baru buka aplikasi) — tunda bentar
-            putarTertunda = item to antreanLagu
+            putarTertunda = Triple(item, antreanLagu, posisiAwalMs)
             return
         }
         p.setMediaItems(antreanLagu.map { a ->
@@ -450,7 +450,7 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 .build()
         })
-        p.seekTo(idx, 0)
+        p.seekTo(idx, posisiAwalMs)
         p.prepare()
         p.play()
         capArtworkAntrean(p, antreanLagu, idx)
@@ -612,6 +612,38 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
         muterLagu = false
         posisiLagu = 0
         durasiLagu = 0
+    }
+
+    // === Serah-terima mode musik video <-> musik latar ===
+    // Pas user keluar aplikasi di mode musik video, putaran video dioper
+    // ke layanan musik latar (antrean = SEMUA video yg lagi kebuka) biar
+    // jadi musik latar beneran: ada notif media + prev/next jalan.
+    /** Video yg lagi dioper ke latar; null = nggak ada operan. */
+    var videoDiLatar: MediaItem? by mutableStateOf(null)
+        private set
+
+    fun serahkanVideoKeLatar(videos: List<MediaItem>, mulai: MediaItem, posisiMs: Long) {
+        if (videos.isEmpty() || videoDiLatar != null) return
+        val antrean = videos.map { v ->
+            AudioItem(
+                key = v.key, uri = v.uri, title = v.name, artist = "Video",
+                album = "", durationMs = v.durationMs, artUri = Uri.EMPTY,
+                dateMillis = v.dateMillis, akunDrive = v.akunDrive,
+            )
+        }
+        val target = antrean.firstOrNull { it.key == mulai.key } ?: antrean.first()
+        videoDiLatar = mulai
+        putarLagu(target, antrean, posisiMs)
+    }
+
+    /** Ambil alih dari latar: balikin (kunci video yg lagi jalan, posisi)
+     * lalu matikan layanan. null kalau nggak ada operan. */
+    fun ambilAlihDariLatar(): Pair<String, Long>? {
+        val v = videoDiLatar ?: return null
+        val hasil = (laguDimainkan?.key ?: v.key) to posisiLagu
+        tutupPemutar()
+        videoDiLatar = null
+        return hasil
     }
 
     fun toggleLagu() {

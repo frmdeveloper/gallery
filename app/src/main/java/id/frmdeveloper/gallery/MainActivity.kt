@@ -701,6 +701,9 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                     onToggleFavorite = { vm.toggleFavorite(it) },
                     onDelete = { item -> requestDelete(listOf(item), goBackAfter = true) },
                     onBack = { screen = s.from },
+                    videoSedangDiLatar = vm.videoDiLatar != null,
+                    onSerahkanVideo = { videos, mulai, pos -> vm.serahkanVideoKeLatar(videos, mulai, pos) },
+                    onAmbilAlihVideo = { vm.ambilAlihDariLatar() },
                 )
             }
         }

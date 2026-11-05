@@ -2,6 +2,9 @@ package id.frmdeveloper.gallery
 
 import android.content.Intent
 import android.os.Build
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import androidx.compose.ui.draw.clip
@@ -303,6 +306,9 @@ private fun VideoPage(
     modeMusik: Boolean = false,
     onModeMusik: (Boolean) -> Unit = {},
     onLompatAcak: () -> Unit = {},
+    onSerahkanKeLatar: (Long) -> Unit = {},
+    sambungan: Pair<String, Long>? = null,
+    onSambunganTerpakai: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
@@ -395,6 +401,27 @@ private fun VideoPage(
     }
     LaunchedEffect(isCurrent) {
         if (isCurrent) player.play() else player.pause()
+    }
+    // Keluar aplikasi pas mode musik & lagi muter: oper ke musik latar
+    val pemilikHidupVP = LocalLifecycleOwner.current
+    DisposableEffect(pemilikHidupVP, modeMusik, isCurrent) {
+        val pengamat = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && modeMusik && isCurrent && muter && !selesai) {
+                onSerahkanKeLatar(player.currentPosition)
+                player.pause()
+            }
+        }
+        pemilikHidupVP.lifecycle.addObserver(pengamat)
+        onDispose { pemilikHidupVP.lifecycle.removeObserver(pengamat) }
+    }
+    // Ambil alih dari latar: lanjutkan dari posisi layanan
+    LaunchedEffect(isCurrent, sambungan) {
+        val smb = sambungan
+        if (isCurrent && smb != null && smb.first == item.key) {
+            player.seekTo(smb.second)
+            player.play()
+            onSambunganTerpakai()
+        }
     }
     LaunchedEffect(isCurrent) {
         var terakhirSimpan = 0L
@@ -787,58 +814,32 @@ private fun LayarModeMusikVideo(
     onKeluar: () -> Unit,
     onDaftarView: (PlayerView) -> Unit,
 ) {
-    // Latar LIVE: player KEDUA memutar video yg sama (bisu, diulang),
-    // dirender memenuhi layar + diburamkan. Cuplikan bitmap per 700ms
-    // (v1.32) bikin lag — ini murni permukaan video, jauh lebih mulus.
+    // Latar = FRAME video utama sendiri: permukaan cover (TextureView)
+    // dipotret kecil (~112px) berkala, ditampilkan buram memenuhi layar.
+    // Player KEDUA (v1.33–v1.39) DIBUANG: dua decoder + dua stream
+    // berebut di HP ini bikin latar macet (diem), telat (delay) & glitch
+    // (acak-acakan) — laporan user. Frame sendiri = selalu sinkron,
+    // tanpa stream/decoder tambahan. Pas video jeda, frame terakhir
+    // tetap tampil (memang begitu seharusnya latar).
     val contextMusik = LocalContext.current
-    val playerLatar = remember(item.key) {
-        val builder = ExoPlayer.Builder(contextMusik)
-        if (item.driveId.isNotBlank()) {
-            val token = DriveApi.cachedTokenUntukFile(item.driveId)
-            if (token != null) {
-                val dataSource = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-                    .setDefaultRequestProperties(mapOf("Authorization" to "Bearer $token"))
-                builder.setMediaSourceFactory(
-                    androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSource)
-                )
-            }
-        }
-        builder.build().apply {
-            setMediaItem(ExoMediaItem.fromUri(item.uri))
-            volume = 0f
-            repeatMode = Player.REPEAT_MODE_ONE
-            prepare()
-            // Samakan posisi AWAL sebelum tampil — tanpa ini latar
-            // mulai dari 0 & buffering sendiri, telat beberapa detik
-            seekTo(player.currentPosition)
-            playWhenReady = muter
-        }
-    }
-    DisposableEffect(item.key) {
-        onDispose { playerLatar.release() }
-    }
-    // Ikuti player utama: play/pause sama; drift kecil digeser halus
-    // via kecepatan ±8% (nggak kelihatan di latar buram), drift besar
-    // di-seek. v1.33 longgar bgt (cek 1,5 dtk, toleransi 1,2 dtk)
-    // makanya latar telat sampai ±3 detik.
-    LaunchedEffect(Unit) {
+    var viewCover by remember { mutableStateOf<PlayerView?>(null) }
+    var bingkaiLatar by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(item.key) {
         while (true) {
-            if (muter && !selesai) {
-                if (!playerLatar.isPlaying) playerLatar.play()
-                val drift = playerLatar.currentPosition - player.currentPosition
-                when {
-                    drift > 600 || drift < -600 -> {
-                        playerLatar.setPlaybackSpeed(1f)
-                        playerLatar.seekTo(player.currentPosition)
-                    }
-                    drift > 80 -> playerLatar.setPlaybackSpeed(0.92f)
-                    drift < -80 -> playerLatar.setPlaybackSpeed(1.08f)
-                    else -> playerLatar.setPlaybackSpeed(1f)
-                }
-            } else if (playerLatar.isPlaying) {
-                playerLatar.pause()
+            val tv = viewCover?.videoSurfaceView as? android.view.TextureView
+            if (tv != null && tv.isAvailable && player.isPlaying && tv.width > 0) {
+                val lebarKecil = 112
+                val tinggiKecil = (lebarKecil * tv.height / tv.width).coerceIn(1, 200)
+                val hasil = runCatching {
+                    tv.getBitmap(
+                        android.graphics.Bitmap.createBitmap(
+                            lebarKecil, tinggiKecil, android.graphics.Bitmap.Config.ARGB_8888,
+                        )
+                    )
+                }.getOrNull()
+                if (hasil != null) bingkaiLatar = hasil
             }
-            delay(300)
+            delay(450)
         }
     }
     // === Kontrol disamakan PERSIS dgn pemutar audio (perintah user) ===
@@ -880,27 +881,35 @@ private fun LayarModeMusikVideo(
         android.widget.Toast.makeText(contextMusik, teks, android.widget.Toast.LENGTH_SHORT).show()
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF101418))) {
-        // Latar: video asli diputar player latar, penuhi layar + buram
-        AndroidView(
-            factory = { ctx ->
-                val pv = android.view.LayoutInflater.from(ctx)
-                    .inflate(R.layout.player_view, null) as PlayerView
-                pv.player = playerLatar
-                pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                pv
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = 1.6f
-                    scaleY = 1.6f
-                    if (Build.VERSION.SDK_INT >= 31) {
-                        renderEffect = androidx.compose.ui.graphics.BlurEffect(
-                            90f, 90f, androidx.compose.ui.graphics.TileMode.Clamp,
-                        )
-                    }
-                },
-        )
+        // Latar: frame video utama (bitmap kecil) diburamkan memenuhi
+        // layar; sebelum frame pertama siap, pakai thumbnail Drive.
+        val bingkai = bingkaiLatar
+        val modifLatar = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = 1.6f
+                scaleY = 1.6f
+                if (Build.VERSION.SDK_INT >= 31) {
+                    renderEffect = androidx.compose.ui.graphics.BlurEffect(
+                        90f, 90f, androidx.compose.ui.graphics.TileMode.Clamp,
+                    )
+                }
+            }
+        if (bingkai != null) {
+            Image(
+                bitmap = bingkai.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifLatar,
+            )
+        } else if (item.thumbUrl.isNotBlank()) {
+            AsyncImage(
+                model = item.thumbUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifLatar,
+            )
+        }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Row(
@@ -945,6 +954,7 @@ private fun LayarModeMusikVideo(
                                     .inflate(R.layout.player_view, null) as PlayerView
                                 pv.player = player
                                 pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                viewCover = pv
                                 onDaftarView(pv)
                                 pv
                             },
@@ -1152,15 +1162,39 @@ fun ViewerScreen(
     onToggleFavorite: (MediaItem) -> Unit,
     onDelete: (MediaItem) -> Unit,
     onBack: () -> Unit,
+    videoSedangDiLatar: Boolean = false,
+    onSerahkanVideo: (List<MediaItem>, MediaItem, Long) -> Unit = { _, _, _ -> },
+    onAmbilAlihVideo: () -> Pair<String, Long>? = { null },
 ) {
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) { items.size }
     var barsVisible by remember { mutableStateOf(true) }
     var infoItem by remember { mutableStateOf<MediaItem?>(null) }
     var modeMusikVideo by remember { mutableStateOf(false) }
+    var sambungan by remember { mutableStateOf<Pair<String, Long>?>(null) }
     val current = items.getOrNull(pagerState.currentPage)
     var rotasi by remember(current?.key) { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
+    // Balik ke aplikasi pas video lagi dioper ke latar: ambil alih —
+    // lompat ke video yg lagi jalan di layanan; VideoPage-nya yg
+    // nerusin posisi lewat [sambungan].
+    val pemilikHidupVS = LocalLifecycleOwner.current
+    DisposableEffect(pemilikHidupVS, videoSedangDiLatar) {
+        val pengamat = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START && videoSedangDiLatar) {
+                val hasil = onAmbilAlihVideo()
+                if (hasil != null) {
+                    sambungan = hasil
+                    val idx = items.indexOfFirst { it.key == hasil.first }
+                    if (idx >= 0 && idx != pagerState.currentPage) {
+                        scope.launch { pagerState.scrollToPage(idx) }
+                    }
+                }
+            }
+        }
+        pemilikHidupVS.lifecycle.addObserver(pengamat)
+        onDispose { pemilikHidupVS.lifecycle.removeObserver(pengamat) }
+    }
     // --- TARIK KE BAWAH BUAT KEMBALI (pull-to-dismiss, ala galeri Samsung/iOS):
     // foto digeser turun + mengecil ngikutin jari; lepas di atas ambang ->
     // kembali; di bawah ambang -> spring balik. Cuma pas foto TIDAK di-zoom.
@@ -1229,6 +1263,11 @@ fun ViewerScreen(
                     },
                     modeMusik = modeMusikVideo,
                     onModeMusik = { modeMusikVideo = it },
+                    onSerahkanKeLatar = { pos ->
+                        onSerahkanVideo(items.filter { it.isVideo }, item, pos)
+                    },
+                    sambungan = sambungan,
+                    onSambunganTerpakai = { sambungan = null },
                 )
             } else {
                 ZoomableImage(
