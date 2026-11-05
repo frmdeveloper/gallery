@@ -81,6 +81,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -859,59 +860,56 @@ private fun LayarModeMusikVideo(
         ),
         label = "skalaLatar",
     )
-    // GLOW ALA YOUTUBE (perintah user, delay rapat): warna rata-rata
-    // frame video diambil kecil (48x27) dari TextureView cover tiap
-    // 350ms — cara baca bawaan view, TANPA PixelCopy/Surface tambahan
-    // (itu yg bikin kedip). Warnanya dianimasikan 500ms pakai
-    // animateColorAsState, jadi perubahannya ngalir halus 60fps.
-    var warnaMentah by remember(item.key) { mutableStateOf<Color?>(null) }
-    val warnaGlow by animateColorAsState(
-        targetValue = warnaMentah ?: Color.Transparent,
-        animationSpec = tween(500),
-        label = "warnaGlow",
-    )
+    // LATAR JEPRETAN CROSSFADE (dikembalikan atas laporan user: versi
+    // jepretan v1.42 LANCAR; yg rusak itu pas tempo diperpendek 400/450
+    // di v1.43 — pudaran belum selesai udah disambar frame baru jadi
+    // kedip. Di sini: jepret 700ms, pudar 550ms — pudar SELALU selesai
+    // sebelum frame berikutnya datang, dan lebih rapat dari v1.42).
+    // Frame diambil dari TextureView cover pakai PixelCopy (async).
+    var bingkaiMasuk by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var bingkaiTampil by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var bingkaiPudar by remember(item.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val alphaPudar = remember { Animatable(0f) }
+    LaunchedEffect(bingkaiMasuk) {
+        val masuk = bingkaiMasuk ?: return@LaunchedEffect
+        bingkaiPudar = masuk
+        alphaPudar.snapTo(0f)
+        alphaPudar.animateTo(1f, animationSpec = tween(550))
+        bingkaiTampil = masuk
+        bingkaiPudar = null
+    }
+    val penanganUtama = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     LaunchedEffect(item.key) {
+        var lagiJepret = false
         while (true) {
             val tv = viewCover?.videoSurfaceView as? android.view.TextureView
-            if (tv != null && tv.isAvailable && player.isPlaying && tv.width > 0) {
-                val kecil = android.graphics.Bitmap.createBitmap(
-                    48, 27, android.graphics.Bitmap.Config.ARGB_8888,
+            val tekstur = tv?.surfaceTexture
+            if (!lagiJepret && tv != null && tekstur != null && tv.isAvailable &&
+                (player.isPlaying || (bingkaiTampil == null && bingkaiMasuk == null)) &&
+                tv.width > 0
+            ) {
+                val lebarKecil = 112
+                val tinggiKecil = (lebarKecil * tv.height / tv.width).coerceIn(1, 200)
+                val tujuan = android.graphics.Bitmap.createBitmap(
+                    lebarKecil, tinggiKecil, android.graphics.Bitmap.Config.ARGB_8888,
                 )
-                val hasil = runCatching { tv.getBitmap(kecil) }.getOrNull()
-                if (hasil != null) {
-                    var r = 0L
-                    var g = 0L
-                    var b = 0L
-                    var n = 0
-                    var x = 0
-                    while (x < hasil.width) {
-                        var y = 0
-                        while (y < hasil.height) {
-                            val px = hasil.getPixel(x, y)
-                            r += android.graphics.Color.red(px)
-                            g += android.graphics.Color.green(px)
-                            b += android.graphics.Color.blue(px)
-                            n++
-                            y += 2
+                lagiJepret = true
+                val permukaan = android.view.Surface(tekstur)
+                val gagal = runCatching {
+                    android.view.PixelCopy.request(permukaan, null, tujuan, { hasil ->
+                        if (hasil == android.view.PixelCopy.SUCCESS) {
+                            bingkaiMasuk = android.graphics.Bitmap.createBitmap(tujuan)
                         }
-                        x += 2
-                    }
-                    if (n > 0) {
-                        var mr = (r / n).toInt()
-                        var mg = (g / n).toInt()
-                        var mb = (b / n).toInt()
-                        val maks = maxOf(mr, mg, mb)
-                        if (maks >= 24) {
-                            val skala = 217f / maks
-                            mr = (mr * skala).toInt().coerceIn(0, 255)
-                            mg = (mg * skala).toInt().coerceIn(0, 255)
-                            mb = (mb * skala).toInt().coerceIn(0, 255)
-                        }
-                        warnaMentah = Color(mr, mg, mb)
-                    }
+                        permukaan.release()
+                        lagiJepret = false
+                    }, penanganUtama)
+                }.isFailure
+                if (gagal) {
+                    permukaan.release()
+                    lagiJepret = false
                 }
             }
-            delay(350)
+            delay(700)
         }
     }
     // === Kontrol disamakan PERSIS dgn pemutar audio (perintah user) ===
@@ -953,8 +951,8 @@ private fun LayarModeMusikVideo(
         android.widget.Toast.makeText(contextMusik, teks, android.widget.Toast.LENGTH_SHORT).show()
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF101418))) {
-        // Latar: frame video utama (bitmap kecil) diburamkan memenuhi
-        // layar; sebelum frame pertama siap, pakai thumbnail Drive.
+        // Latar: frame jepretan diblur memenuhi layar, dua lapis pudar
+        // silang; sebelum frame pertama siap pakai thumbnail Drive.
         val modifLatar = Modifier
             .fillMaxSize()
             .graphicsLayer {
@@ -966,31 +964,38 @@ private fun LayarModeMusikVideo(
                     )
                 }
             }
-        AsyncImage(
-            model = coil.request.ImageRequest.Builder(contextMusik)
-                .data(item.thumbUrl.ifBlank { item.uri })
-                .crossfade(700)
-                .build(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = modifLatar,
-            colorFilter = ColorFilter.colorMatrix(
-                ColorMatrix().apply { setToSaturation(1.7f) }
-            ),
+        val filterAmbient = ColorFilter.colorMatrix(
+            ColorMatrix().apply { setToSaturation(1.7f) }
         )
-        // Lapisan glow: cahaya warna video (dianimasikan) di atas thumbnail
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            warnaGlow.copy(alpha = 0.5f),
-                            Color.Transparent,
-                        ),
-                    )
-                ),
-        )
+        val tampilKini = bingkaiTampil
+        val pudarKini = bingkaiPudar
+        if (tampilKini != null) {
+            Image(
+                bitmap = tampilKini.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifLatar,
+                colorFilter = filterAmbient,
+            )
+        }
+        if (pudarKini != null) {
+            Image(
+                bitmap = pudarKini.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifLatar.graphicsLayer { alpha = alphaPudar.value },
+                colorFilter = filterAmbient,
+            )
+        }
+        if (tampilKini == null && pudarKini == null && item.thumbUrl.isNotBlank()) {
+            AsyncImage(
+                model = item.thumbUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifLatar,
+                colorFilter = filterAmbient,
+            )
+        }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Row(
@@ -1160,11 +1165,17 @@ private fun LayarModeMusikVideo(
                     // Seekbar TIPIS yg sama persis kayak pemutar audio
                     val durasiAmanMusik = durasiMs.coerceAtLeast(1)
                     val posisiKiniMusik = geser ?: posisiMs.toFloat()
+                    // BarGeserTipis menyimpan callback komposisi PERTAMA
+                    // (pointerInput(Unit)) — parameter geser yg kebaca di
+                    // onSelesai bisa basi (null) makanya seek nggak pernah
+                    // jalan & bar balik ke posisi putar (laporan user).
+                    // rememberUpdatedState selalu nunjuk nilai terbaru.
+                    val geserKini by rememberUpdatedState(geser)
                     BarGeserTipis(
                         fraksi = (posisiKiniMusik / durasiAmanMusik).coerceIn(0f, 1f),
                         onGeser = { f -> onGeser(f * durasiAmanMusik) },
                         onSelesai = {
-                            geser?.let { player.seekTo(it.toLong()) }
+                            geserKini?.let { player.seekTo(it.toLong()) }
                             onGeser(null)
                         },
                         tinggi = 5.dp,
