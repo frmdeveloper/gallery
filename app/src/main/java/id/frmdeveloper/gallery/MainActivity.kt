@@ -709,12 +709,15 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
         // Tab bar mengambang ala Samsung — cuma di layar-layar utama
         val showTabs = screen is Screen.Timeline || screen is Screen.Albums ||
             screen is Screen.MenuTab || screen is Screen.Audio
-        // Mini player musik nempel di atas pill tab selama ada lagu dimuat
-        if (showTabs && !selecting && vm.laguDimainkan != null) {
+        // Mini player musik nempel di atas pill tab selama ada lagu dimuat;
+        // di dalam folder audio juga tampil (di sana nggak ada pill tab,
+        // jadi nempel bawah biasa)
+        val diFolderAudio = screen is Screen.AudioFolder
+        if ((showTabs || diFolderAudio) && !selecting && vm.laguDimainkan != null) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 88.dp),
+                    .padding(bottom = if (diFolderAudio) 16.dp else 88.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 MiniPlayerBar(vm = vm, onOpenPlayer = { pemutarTerbuka = true })
