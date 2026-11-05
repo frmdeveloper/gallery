@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="app/src/main/res/drawable-nodpi/ic_launcher_art.png" width="160" alt="Ikon Galeri FRM" />
+</p>
+
 # Galeri FRM
 
 Galeri foto & video gaya Samsung Gallery, dengan isi dari Google Drive.
