@@ -1199,7 +1199,39 @@ fun MenuScreen(
     ) { diizinkan ->
         sesudahDaftarAkun(if (diizinkan) akunGoogleDiHp(ctxMenu) else emptyList())
     }
+    // Pemilih akun RESMI Google (disediakan Play Services): menampilkan
+    // SEMUA akun Google di HP + pilihan tambah akun, tanpa tunduk pada
+    // batas visibilitas AccountManager (enumerasi cuma memunculkan
+    // frmchan0 di HP user — v1.54/v1.55 mentok). Hasilnya email akun
+    // pilihan -> dialog otorisasi dikunci ke akun itu, TANPA browser.
+    val peluncurPemilihGoogle = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { hasil ->
+        val email = hasil.data?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME)
+            ?: hasil.data?.getStringExtra("authAccount")
+        if (hasil.resultCode == android.app.Activity.RESULT_OK && !email.isNullOrBlank()) {
+            if (vm.daftarAkunDrive.any { it.email.equals(email, ignoreCase = true) }) {
+                vm.beriTahu("Akun $email sudah masuk")
+            } else {
+                vm.loginDenganAkun(email)
+            }
+        }
+    }
     fun mulaiTambahAkun() {
+        val intentPemilih = runCatching {
+            com.google.android.gms.common.AccountPicker.newChooseAccountIntent(
+                com.google.android.gms.common.AccountPicker.AccountChooserOptions.Builder()
+                    .setAllowableAccountsTypes(listOf("com.google"))
+                    .setAlwaysShowAccountPicker(true)
+                    .setTitleOverrideText("Pilih akun Google")
+                    .build()
+            )
+        }.getOrNull()
+        if (intentPemilih != null) {
+            peluncurPemilihGoogle.launch(intentPemilih)
+            return
+        }
+        // Cadangan (pemilih Google tak tersedia): enumerasi + dialog sendiri.
         val izin = androidx.core.content.ContextCompat.checkSelfPermission(
             ctxMenu, android.Manifest.permission.GET_ACCOUNTS,
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -1496,7 +1528,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.55",
+                sub = "Galeri FRM 1.56",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
