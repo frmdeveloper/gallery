@@ -97,6 +97,9 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+    /** Kuota Drive per akun: email -> (total, terpakai) byte. */
+    var kuotaDrive: Map<String, Pair<Long, Long>> by mutableStateOf(emptyMap())
+        private set
     var driveName: String by mutableStateOf("")
         private set
     var loading: Boolean by mutableStateOf(false)
@@ -136,10 +139,15 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
                 val semuaAlbum = mutableListOf<Album>()
                 val semuaItem = mutableListOf<MediaItem>()
                 val galat = mutableListOf<String>()
+                val petaKuota = mutableMapOf<String, Pair<Long, Long>>()
                 for (akun in daftarAkunDrive) {
                     val hasil = withContext(Dispatchers.IO) {
                         runCatching { DriveApi.scan(akun) }
                     }
+                    val kuota = withContext(Dispatchers.IO) {
+                        runCatching { DriveApi.kuota(akun) }.getOrNull()
+                    }
+                    if (kuota != null) petaKuota[akun.email] = kuota
                     hasil.onSuccess { scan ->
                         semuaAlbum += scan.albums
                         semuaItem += scan.allItems
@@ -147,6 +155,7 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
                         galat += "${akun.email}: ${e.message ?: "gagal"}"
                     }
                 }
+                kuotaDrive = petaKuota
                 driveAlbums = semuaAlbum
                 driveItems = semuaItem.sortedByDescending { it.dateMillis }
                 driveName = if (daftarAkunDrive.size > 1) {

@@ -55,6 +55,26 @@ object DriveApi {
         }
     }
 
+    /**
+     * Kuota penyimpanan akun dari Drive API (about.storageQuota):
+     * (total, terpakai) byte. total 0 = Google tidak memberi batas.
+     * Blocking — panggil dari IO.
+     */
+    fun kuota(akun: AkunDrive): Pair<Long, Long>? {
+        val token = accessTokenBlocking(akun) ?: return null
+        return runCatching {
+            val conn = (URL("$API/about?fields=storageQuota").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 15_000
+                setRequestProperty("Authorization", "Bearer $token")
+            }
+            if (conn.responseCode !in 200..299) return null
+            val sq = JSONObject(conn.inputStream.bufferedReader().readText())
+                .optJSONObject("storageQuota") ?: return null
+            sq.optLong("limit", 0L) to sq.optLong("usage", 0L)
+        }.getOrNull()
+    }
+
     /** Token dari cache saja (tanpa jaringan) — aman dari main thread. */
     fun cachedToken(akun: AkunDrive? = null): String? {
         val a = akun ?: akunUtama() ?: return null

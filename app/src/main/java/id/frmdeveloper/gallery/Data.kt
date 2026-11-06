@@ -505,7 +505,7 @@ fun akunGoogleDiHp(ctx: android.content.Context): List<String> = runCatching {
 }.getOrDefault(emptyList())
 
 /** Satu volume penyimpanan (internal / kartu SD / USB) + sisa ruangnya. */
-data class VolumeSimpan(val nama: String, val total: Long, val bebas: Long)
+data class VolumeSimpan(val nama: String, val total: Long, val bebas: Long, val jenis: String = "lain")
 
 /** Semua volume yg lagi terpasang: internal, kartu SD, USB disk (OTG). */
 fun infoVolumePenyimpanan(ctx: android.content.Context): List<VolumeSimpan> {
@@ -522,13 +522,19 @@ fun infoVolumePenyimpanan(ctx: android.content.Context): List<VolumeSimpan> {
         if (total <= 0L) continue
         val bebas = runCatching { sf.availableBytes }.getOrDefault(0L)
         val desk = runCatching { vol.getDescription(ctx) ?: "" }.getOrDefault("")
+        val jenis = when {
+            vol.isPrimary -> "internal"
+            desk.contains("SD", ignoreCase = true) -> "sd"
+            desk.contains("USB", ignoreCase = true) -> "usb"
+            else -> "lain"
+        }
         val nama = when {
             vol.isPrimary -> "Penyimpanan internal"
             desk.isNotBlank() -> desk
             vol.isRemovable -> "Penyimpanan eksternal"
             else -> "Penyimpanan lain"
         }
-        hasil += VolumeSimpan(nama, total, bebas)
+        hasil += VolumeSimpan(nama, total, bebas, jenis)
     }
     return hasil
 }

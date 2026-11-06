@@ -184,6 +184,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material.icons.filled.Storage
 
 // ---------- Helper berbagi ----------
 
@@ -1184,11 +1185,13 @@ fun MenuScreen(
     fun saringAkunBelumMasuk(daftar: List<String>): List<String> =
         daftar.filter { e -> vm.daftarAkunDrive.none { it.email.equals(e, ignoreCase = true) } }
     fun sesudahDaftarAkun(daftar: List<String>) {
-        val belum = saringAkunBelumMasuk(daftar)
-        when {
-            belum.isNotEmpty() -> pilihAkun = belum
-            daftar.isNotEmpty() -> vm.beriTahu("Semua akun Google di HP ini sudah masuk")
-            else -> onLoginAkunLain()
+        // Pemilih SELALU tampil selama ada akun terbaca (di dalamnya ada
+        // jalur "Akun lain…") — jangan mentok di toast. Daftar kosong =
+        // izin ditolak / akun tak terbaca -> langsung jalur browser.
+        if (daftar.isEmpty()) {
+            onLoginAkunLain()
+        } else {
+            pilihAkun = saringAkunBelumMasuk(daftar)
         }
     }
     val peluncurIzinAkun = rememberLauncherForActivityResult(
@@ -1315,6 +1318,7 @@ fun MenuScreen(
         Modifier
             .fillMaxSize()
             .background(WarnaLatarMenu)
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState()),
     ) {
         Text(
@@ -1349,17 +1353,35 @@ fun MenuScreen(
             } else {
                 vm.daftarAkunDrive.forEachIndexed { idx, akun ->
                     if (idx > 0) PemisahMenu()
-                    BarisMenu(
-                        judul = "Google Drive",
-                        sub = akun.email,
-                        subBiru = true,
-                        onClick = { akunKeluar = akun.email },
+                    // Bentuk baris akun: ikon Drive kiri, email di atas,
+                    // sisa penyimpanan Drive di bawahnya.
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { akunKeluar = akun.email }
+                            .padding(horizontal = 20.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Image(
-                            painter = painterResource(R.drawable.logo_drive),
-                            contentDescription = "Google Drive",
-                            modifier = Modifier.size(24.dp),
-                        )
+                        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
+                            Image(
+                                painter = painterResource(R.drawable.logo_drive),
+                                contentDescription = "Google Drive",
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(akun.email, color = WarnaBiruTautan, fontSize = 16.sp)
+                            val q = vm.kuotaDrive[akun.email]
+                            Text(
+                                when {
+                                    q == null -> "Memeriksa penyimpanan…"
+                                    q.first > 0L -> "Sisa ${formatUkuranBerkas((q.first - q.second).coerceAtLeast(0L))} dari ${formatUkuranBerkas(q.first)}"
+                                    else -> "Terpakai ${formatUkuranBerkas(q.second)}"
+                                },
+                                color = WarnaSubMenu, fontSize = 13.sp,
+                            )
+                        }
                     }
                 }
                 PemisahMenu()
@@ -1432,42 +1454,38 @@ fun MenuScreen(
             }
         }
 
-        // ===== Penyimpanan: sisa ruang tiap volume =====
+        // ===== Penyimpanan lokal: bentuk baris sama kayak akun Drive =====
         val daftarVolume = remember { infoVolumePenyimpanan(ctxMenu) }
         if (daftarVolume.isNotEmpty()) {
             LabelSeksi("Penyimpanan")
             KartuMenu {
                 daftarVolume.forEachIndexed { idx, vol ->
                     if (idx > 0) PemisahMenu()
-                    Column(
+                    Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                            .padding(horizontal = 20.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            vol.nama,
-                            color = WarnaTeksMenu, fontSize = 16.sp,
-                        )
-                        Text(
-                            "Sisa ${formatUkuranBerkas(vol.bebas)} dari ${formatUkuranBerkas(vol.total)}",
-                            color = WarnaSubMenu, fontSize = 13.sp,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = {
-                                if (vol.total > 0) {
-                                    ((vol.total - vol.bebas).toFloat() / vol.total).coerceIn(0f, 1f)
-                                } else {
-                                    0f
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(5.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = WarnaBiruTautan,
-                            trackColor = Color(0xFFE3E3E6),
-                        )
+                        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
+                            Icon(
+                                when (vol.jenis) {
+                                    "internal" -> Icons.Filled.PhoneAndroid
+                                    "sd" -> Icons.Filled.SdCard
+                                    "usb" -> Icons.Filled.Usb
+                                    else -> Icons.Filled.Storage
+                                },
+                                null, tint = WarnaIkonMenu, modifier = Modifier.size(24.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(vol.nama, color = WarnaTeksMenu, fontSize = 16.sp)
+                            Text(
+                                "Sisa ${formatUkuranBerkas(vol.bebas)} dari ${formatUkuranBerkas(vol.total)}",
+                                color = WarnaSubMenu, fontSize = 13.sp,
+                            )
+                        }
                     }
                 }
             }
@@ -1478,7 +1496,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.54",
+                sub = "Galeri FRM 1.55",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
@@ -1516,6 +1534,14 @@ fun MenuScreen(
             title = { Text("Pilih akun Google") },
             text = {
                 Column {
+                    if (daftar.isEmpty()) {
+                        Text(
+                            "Semua akun Google yg terbaca di HP ini sudah masuk. " +
+                                "Akun lain tetap bisa ditambahkan:",
+                            color = WarnaSubMenu, fontSize = 13.sp,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                    }
                     daftar.forEach { email ->
                         Row(
                             Modifier
