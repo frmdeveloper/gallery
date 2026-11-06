@@ -80,7 +80,9 @@ object DriveStore {
                     val o = arr.getJSONObject(i)
                     val e = o.optString("e")
                     val r = o.optString("r")
-                    if (e.isNotBlank() && r.isNotBlank()) hasil += AkunDrive(e, r)
+                    if (e.isNotBlank() && r.isNotBlank()) {
+                        hasil += AkunDrive(e, r, o.optString("k", "desktop").ifBlank { "desktop" })
+                    }
                 }
             }
         }
@@ -98,7 +100,9 @@ object DriveStore {
     fun saveDaftarAkun(context: Context, daftar: List<AkunDrive>) {
         val arr = org.json.JSONArray()
         daftar.forEach { a ->
-            arr.put(org.json.JSONObject().put("e", a.email).put("r", a.refreshToken))
+            arr.put(
+                org.json.JSONObject().put("e", a.email).put("r", a.refreshToken).put("k", a.klien)
+            )
         }
         context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
             .edit().putString(KEY_AKUN_LIST, arr.toString()).apply()
@@ -123,7 +127,13 @@ object DriveStore {
 }
 
 /** Satu akun Google Drive hasil login manual (email + refresh token). */
-data class AkunDrive(val email: String, val refreshToken: String)
+/**
+ * Satu akun Google Drive hasil login manual.
+ * [klien] = OAuth client yg MENERBITKAN refresh token ("web" = dialog
+ * Google, "desktop" = login browser loopback). Refresh token cuma bisa
+ * ditebus pakai client yg sama — tertukar = "token mati".
+ */
+data class AkunDrive(val email: String, val refreshToken: String, val klien: String = "desktop")
 
 data class DriveScan(
     val albums: List<Album>,

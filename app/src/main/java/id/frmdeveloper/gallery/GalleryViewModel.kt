@@ -188,22 +188,33 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             loginMenunggu = true
             message = "Menyiapkan login Google…"
-            val hasilDialog = runCatching { prosesLoginDialog(ctx) }
-            val hasil = if (hasilDialog.isSuccess) {
+            // Dialog Google selalu memakai akun yg sudah nempel di HP —
+            // buat NAMBAH akun lain dia malah login ke akun yg sama, jadi
+            // tambah akun langsung lewat browser (bisa pilih/ketik akun).
+            val hasilDialog = if (daftarAkunDrive.isEmpty()) {
+                runCatching { prosesLoginDialog(ctx) }
+            } else {
+                null
+            }
+            val hasil = if (hasilDialog != null && hasilDialog.isSuccess) {
                 hasilDialog
             } else {
-                message = "Login dialog gagal (${ringkasSebab(hasilDialog.exceptionOrNull())}) — membuka login lewat browser…"
+                message = if (hasilDialog != null) {
+                    "Login dialog gagal (${ringkasSebab(hasilDialog.exceptionOrNull())}) — membuka login lewat browser…"
+                } else {
+                    "Menambah akun lewat browser — pilih akun yg mau ditambahkan…"
+                }
                 runCatching { prosesLoginBrowser(ctx) }
             }
             sesiLogin = null
             loginMenunggu = false
-            hasil.onSuccess { (refresh, email) ->
+            hasil.onSuccess { akunBaru ->
                 // Login = MENAMBAH akun (multi-akun); email yg sama berarti
                 // token akun itu diperbarui, bukan akun dobel
-                daftarAkunDrive = DriveStore.tambahAkun(ctx, AkunDrive(email, refresh))
-                DriveApi.resetToken(email)
+                daftarAkunDrive = DriveStore.tambahAkun(ctx, akunBaru)
+                DriveApi.resetToken(akunBaru.email)
                 sinkronAkun()
-                message = if (email.isNotBlank()) "Login berhasil: $email" else "Login akun lain berhasil"
+                message = if (akunBaru.email.isNotBlank()) "Login berhasil: ${akunBaru.email}" else "Login akun lain berhasil"
                 reloadDrive()
             }.onFailure { e ->
                 message = "Login gagal: ${e.message}"
@@ -213,7 +224,7 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Dialog Google: otorisasi -> tampilkan UI Google SETIAP kali diminta
      * (bisa berurutan: pilih akun lalu persetujuan izin) -> tukar kode. */
-    private suspend fun prosesLoginDialog(ctx: android.content.Context): Pair<String, String> {
+    private suspend fun prosesLoginDialog(ctx: android.content.Context): AkunDrive {
         var hasilAwal: AuthorizationResult? = null
         var putaran = 0
         while (hasilAwal == null) {
@@ -238,7 +249,10 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         val kode = hasilAwal.serverAuthCode ?: error("Google tidak memberi kode login")
+        // Token dari client WEB — penanda "web" wajib benar, refresh token
+        // cuma bisa ditebus client penerbitnya.
         return withContext(Dispatchers.IO) { DriveLoginGoogle.tukarKodeServer(kode) }
+            .let { (refresh, email) -> AkunDrive(email, refresh, "web") }
     }
 
     /** Tahan coroutine sampai Activity melaporkan hasil dialog izin. */
@@ -252,7 +266,7 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Login cadangan: browser + server loopback 127.0.0.1 (DriveLogin). */
-    private suspend fun prosesLoginBrowser(ctx: android.content.Context): Pair<String, String> =
+    private suspend fun prosesLoginBrowser(ctx: android.content.Context): AkunDrive =
         withContext(Dispatchers.IO) {
             val sesi = DriveLogin.mulai()
             sesiLogin = sesi
@@ -267,6 +281,7 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
             }
             val kode = DriveLogin.tungguKode(sesi)
             DriveLogin.tukarKode(sesi, kode)
+                .let { (refresh, email) -> AkunDrive(email, refresh, "desktop") }
         }
 
     fun batalLogin() {

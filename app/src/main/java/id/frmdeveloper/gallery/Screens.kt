@@ -1406,7 +1406,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.52",
+                sub = "Galeri FRM 1.53",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(

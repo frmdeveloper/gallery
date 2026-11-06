@@ -11,12 +11,12 @@ import java.net.URLEncoder
 import java.time.Instant
 
 /**
- * Google Drive lewat REST API v3 RESMI + kredensial OAuth sendiri
- * (lihat DriveAuth). Menggantikan jalur SAF yang provider Drive-nya
- * setengah-setengah (folder tidak muncul / enumerasi kosong).
+ * Google Drive lewat REST API v3 RESMI + kredensial OAuth yang sama dengan
+ * gd.js (lihat DriveAuth). Menggantikan jalur SAF yang provider Drive-nya
+ * setengah-setengah (folder tidak muncul / enumerasi kosong di HP user).
  *
  * Semua fungsi di sini BLOCKING — panggil dari Dispatchers.IO.
- * Token akses di-cache; refresh otomatis dari refresh token hasil login.
+ * Token akses di-cache; refresh otomatis dari refresh_token tertanam.
  */
 object DriveApi {
 
@@ -77,10 +77,41 @@ object DriveApi {
     }
 
     private fun refreshTokenLocked(akun: AkunDrive): String? {
+        val pasangan = if (akun.klien == "web") {
+            DriveAuth.webClientId to DriveAuth.webClientSecret
+        } else {
+            DriveAuth.clientId to DriveAuth.clientSecret
+        }
+        cobaRefresh(akun, pasangan.first, pasangan.second)?.let { return it }
+        // Penanda client bisa saja salah simpan (token dialog web tersimpan
+        // versi lama tanpa penanda) — coba client satunya; kalau tembus,
+        // perbaiki penandanya sekalian biar seterusnya sekali jalan.
+        val cadangan = if (akun.klien == "web") {
+            DriveAuth.clientId to DriveAuth.clientSecret
+        } else {
+            DriveAuth.webClientId to DriveAuth.webClientSecret
+        }
+        val token = cobaRefresh(akun, cadangan.first, cadangan.second) ?: return null
+        val ctx = appCtx
+        if (ctx != null) {
+            runCatching {
+                val benar = if (akun.klien == "web") "desktop" else "web"
+                DriveStore.saveDaftarAkun(
+                    ctx,
+                    DriveStore.loadDaftarAkun(ctx).map {
+                        if (it.email == akun.email) it.copy(klien = benar) else it
+                    },
+                )
+            }
+        }
+        return token
+    }
+
+    private fun cobaRefresh(akun: AkunDrive, clientId: String, clientSecret: String): String? {
         return runCatching {
             val body = listOf(
-                "client_id" to DriveAuth.clientId,
-                "client_secret" to DriveAuth.clientSecret,
+                "client_id" to clientId,
+                "client_secret" to clientSecret,
                 "refresh_token" to akun.refreshToken,
                 "grant_type" to "refresh_token",
             ).joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }

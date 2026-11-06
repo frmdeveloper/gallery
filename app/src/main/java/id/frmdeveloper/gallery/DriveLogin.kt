@@ -14,16 +14,16 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 
 /**
- * Login Google Drive lewat OAuth loopback:
+ * Login Google Drive ke AKUN LAIN (bukan akun gd.js) lewat OAuth loopback:
  * aplikasi buka server HTTP kecil di 127.0.0.1 (port acak), browser dibuka ke
- * halaman login Google (client OAuth tipe "desktop" — client tipe ini
- * MENERIMA redirect loopback).
+ * halaman login Google (client OAuth gd.js, tipe "desktop" — client tipe ini
+ * MENERIMA redirect loopback, sudah diverifikasi: URL auth -> 302 ke sign-in).
  * User login pakai akun Google mana pun -> Google redirect balik ke
- * 127.0.0.1 -> kode ditukar (PKCE + client_secret dari local.properties)
- * jadi refresh token akun tsb, disimpan lokal di prefs aplikasi.
+ * 127.0.0.1 -> kode ditukar (PKCE + client_secret tertanam) jadi refresh
+ * token akun tsb, disimpan lokal di prefs aplikasi.
  *
  * Jalur device-code DITOLAK Google (401 invalid_client) karena device flow
- * cuma buat client tipe "TVs and Limited Input" — client di sini tipe desktop.
+ * cuma buat client tipe "TVs and Limited Input" — client gd.js tipe desktop.
  *
  * Semua fungsi BLOCKING — panggil dari Dispatchers.IO.
  */
@@ -65,7 +65,7 @@ object DriveLogin {
             "&redirect_uri=${URLEncoder.encode(redirect, "UTF-8")}" +
             "&response_type=code" +
             "&scope=${URLEncoder.encode("https://www.googleapis.com/auth/drive openid email", "UTF-8")}" +
-            "&access_type=offline&prompt=consent" +
+            "&access_type=offline&prompt=select_account%20consent" +
             "&state=$state" +
             "&code_challenge=${tantanganPkce(verifier)}&code_challenge_method=S256"
         return Sesi(url, state, verifier, server)
