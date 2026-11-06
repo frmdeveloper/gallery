@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import com.google.android.gms.auth.api.identity.AuthorizationResult
 
 class GalleryViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -208,17 +209,23 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Dialog Google: otorisasi -> (mungkin tampilkan UI) -> tukar kode. */
+    /** Dialog Google: otorisasi -> tampilkan UI Google SETIAP kali diminta
+     * (bisa berurutan: pilih akun lalu persetujuan izin) -> tukar kode. */
     private suspend fun prosesLoginDialog(ctx: android.content.Context): Pair<String, String> {
-        val awal = withContext(Dispatchers.IO) {
-            runCatching { DriveLoginGoogle.otorisasi(ctx) }
-        }
-        val hasilAwal = awal.getOrElse { e ->
-            if (e is DriveLoginGoogle.PerluResolusi) {
-                if (!tungguResolusi(e.pendingIntent)) error("Login dibatalkan")
-                withContext(Dispatchers.IO) { DriveLoginGoogle.otorisasi(ctx) }
-            } else {
-                throw e
+        var hasilAwal: AuthorizationResult? = null
+        var putaran = 0
+        while (hasilAwal == null) {
+            val coba = withContext(Dispatchers.IO) {
+                runCatching { DriveLoginGoogle.otorisasi(ctx) }
+            }
+            hasilAwal = coba.getOrElse { e ->
+                if (e is DriveLoginGoogle.PerluResolusi && putaran < 4) {
+                    putaran++
+                    if (!tungguResolusi(e.pendingIntent)) error("Login dibatalkan")
+                    null
+                } else {
+                    throw e
+                }
             }
         }
         val kode = hasilAwal.serverAuthCode ?: error("Google tidak memberi kode login")
