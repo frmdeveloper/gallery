@@ -180,6 +180,10 @@ import java.net.URL
 import org.json.JSONObject
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material3.LinearProgressIndicator
 
 // ---------- Helper berbagi ----------
 
@@ -1175,6 +1179,33 @@ fun MenuScreen(
     var tentangOpen by remember { mutableStateOf(false) }
     var akunKeluar by remember { mutableStateOf<String?>(null) }
     val ctxMenu = LocalContext.current
+    // === Tambah akun: dialog Google dikunci ke akun yg dipilih user ===
+    var pilihAkun by remember { mutableStateOf<List<String>?>(null) }
+    fun saringAkunBelumMasuk(daftar: List<String>): List<String> =
+        daftar.filter { e -> vm.daftarAkunDrive.none { it.email.equals(e, ignoreCase = true) } }
+    fun sesudahDaftarAkun(daftar: List<String>) {
+        val belum = saringAkunBelumMasuk(daftar)
+        when {
+            belum.isNotEmpty() -> pilihAkun = belum
+            daftar.isNotEmpty() -> vm.beriTahu("Semua akun Google di HP ini sudah masuk")
+            else -> onLoginAkunLain()
+        }
+    }
+    val peluncurIzinAkun = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { diizinkan ->
+        sesudahDaftarAkun(if (diizinkan) akunGoogleDiHp(ctxMenu) else emptyList())
+    }
+    fun mulaiTambahAkun() {
+        val izin = androidx.core.content.ContextCompat.checkSelfPermission(
+            ctxMenu, android.Manifest.permission.GET_ACCOUNTS,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (izin) {
+            sesudahDaftarAkun(akunGoogleDiHp(ctxMenu))
+        } else {
+            peluncurIzinAkun.launch(android.Manifest.permission.GET_ACCOUNTS)
+        }
+    }
     // === Pembaruan mandiri: cek rilis GitHub -> unduh APK -> pasang ===
     var statusUpdate by remember { mutableStateOf<String?>(null) }
     var sibukUpdate by remember { mutableStateOf(false) }
@@ -1334,9 +1365,9 @@ fun MenuScreen(
                 PemisahMenu()
                 BarisMenu(
                     judul = "Tambah akun",
-                    sub = if (vm.loginMenunggu) "Menunggu login di browser…" else null,
+                    sub = if (vm.loginMenunggu) "Menunggu login…" else null,
                     onClick = {
-                        if (vm.loginMenunggu) vm.batalLogin() else onLoginAkunLain()
+                        if (vm.loginMenunggu) vm.batalLogin() else mulaiTambahAkun()
                     },
                 ) {
                     Icon(
@@ -1401,12 +1432,53 @@ fun MenuScreen(
             }
         }
 
+        // ===== Penyimpanan: sisa ruang tiap volume =====
+        val daftarVolume = remember { infoVolumePenyimpanan(ctxMenu) }
+        if (daftarVolume.isNotEmpty()) {
+            LabelSeksi("Penyimpanan")
+            KartuMenu {
+                daftarVolume.forEachIndexed { idx, vol ->
+                    if (idx > 0) PemisahMenu()
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                    ) {
+                        Text(
+                            vol.nama,
+                            color = WarnaTeksMenu, fontSize = 16.sp,
+                        )
+                        Text(
+                            "Sisa ${formatUkuranBerkas(vol.bebas)} dari ${formatUkuranBerkas(vol.total)}",
+                            color = WarnaSubMenu, fontSize = 13.sp,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = {
+                                if (vol.total > 0) {
+                                    ((vol.total - vol.bebas).toFloat() / vol.total).coerceIn(0f, 1f)
+                                } else {
+                                    0f
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = WarnaBiruTautan,
+                            trackColor = Color(0xFFE3E3E6),
+                        )
+                    }
+                }
+            }
+        }
+
         // ===== Lainnya =====
         LabelSeksi("Lainnya")
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.53",
+                sub = "Galeri FRM 1.54",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
@@ -1438,6 +1510,59 @@ fun MenuScreen(
         Spacer(Modifier.height(28.dp))
     }
 
+    pilihAkun?.let { daftar ->
+        AlertDialog(
+            onDismissRequest = { pilihAkun = null },
+            title = { Text("Pilih akun Google") },
+            text = {
+                Column {
+                    daftar.forEach { email ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    pilihAkun = null
+                                    vm.loginDenganAkun(email)
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Filled.AccountCircle, null,
+                                tint = WarnaIkonMenu, modifier = Modifier.size(26.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(email, color = WarnaTeksMenu, fontSize = 15.sp)
+                        }
+                    }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                pilihAkun = null
+                                onLoginAkunLain()
+                            }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Filled.Add, null,
+                            tint = WarnaIkonMenu, modifier = Modifier.size(26.dp),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "Akun lain (tidak ada di HP ini)…",
+                            color = WarnaTeksMenu, fontSize = 15.sp,
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pilihAkun = null }) { Text("Batal") }
+            },
+        )
+    }
     akunKeluar?.let { email ->
         AlertDialog(
             onDismissRequest = { akunKeluar = null },

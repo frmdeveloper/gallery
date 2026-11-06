@@ -489,7 +489,46 @@ object PosisiVideoStore {
 
 /** "7,1 MB" / "812 KB" buat dialog Rincian. */
 fun formatUkuranBerkas(b: Long): String = when {
+    b >= 1_000_000_000_000L -> String.format(java.util.Locale("id", "ID"), "%.1f TB", b / 1_000_000_000_000.0)
+    b >= 1_000_000_000L -> String.format(java.util.Locale("id", "ID"), "%.1f GB", b / 1_000_000_000.0)
     b >= 1_000_000L -> String.format(java.util.Locale("id", "ID"), "%.1f MB", b / 1_000_000.0)
     b >= 1_000L -> String.format(java.util.Locale("id", "ID"), "%.1f KB", b / 1_000.0)
     else -> "$b B"
+}
+
+/** Email akun Google yg terdaftar di HP (buat pemilih akun). Butuh GET_ACCOUNTS. */
+fun akunGoogleDiHp(ctx: android.content.Context): List<String> = runCatching {
+    android.accounts.AccountManager.get(ctx).getAccountsByType("com.google")
+        .map { it.name }
+        .filter { it.contains("@") }
+        .distinct()
+}.getOrDefault(emptyList())
+
+/** Satu volume penyimpanan (internal / kartu SD / USB) + sisa ruangnya. */
+data class VolumeSimpan(val nama: String, val total: Long, val bebas: Long)
+
+/** Semua volume yg lagi terpasang: internal, kartu SD, USB disk (OTG). */
+fun infoVolumePenyimpanan(ctx: android.content.Context): List<VolumeSimpan> {
+    val sm = ctx.getSystemService(android.content.Context.STORAGE_SERVICE)
+        as? android.os.storage.StorageManager ?: return emptyList()
+    val hasil = mutableListOf<VolumeSimpan>()
+    val terlihat = HashSet<String>()
+    for (vol in sm.storageVolumes) {
+        val dir = runCatching { vol.directory }.getOrNull() ?: continue
+        val kunci = dir.absolutePath
+        if (!terlihat.add(kunci)) continue
+        val sf = runCatching { android.os.StatFs(kunci) }.getOrNull() ?: continue
+        val total = runCatching { sf.totalBytes }.getOrDefault(0L)
+        if (total <= 0L) continue
+        val bebas = runCatching { sf.availableBytes }.getOrDefault(0L)
+        val desk = runCatching { vol.getDescription(ctx) ?: "" }.getOrDefault("")
+        val nama = when {
+            vol.isPrimary -> "Penyimpanan internal"
+            desk.isNotBlank() -> desk
+            vol.isRemovable -> "Penyimpanan eksternal"
+            else -> "Penyimpanan lain"
+        }
+        hasil += VolumeSimpan(nama, total, bebas)
+    }
+    return hasil
 }

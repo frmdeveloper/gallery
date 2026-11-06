@@ -222,14 +222,46 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Login dialog DIPAKSA ke akun [email] (dipilih user dari daftar akun HP). */
+    fun loginDenganAkun(email: String) {
+        if (loginMenunggu) return
+        val ctx = getApplication<Application>()
+        viewModelScope.launch {
+            loginMenunggu = true
+            message = "Menyiapkan login Google…"
+            val akun = android.accounts.Account(email, "com.google")
+            val hasilDialog = runCatching { prosesLoginDialog(ctx, akun) }
+            val hasil = if (hasilDialog.isSuccess) {
+                hasilDialog
+            } else {
+                message = "Login dialog gagal (${ringkasSebab(hasilDialog.exceptionOrNull())}) — membuka login lewat browser…"
+                runCatching { prosesLoginBrowser(ctx) }
+            }
+            sesiLogin = null
+            loginMenunggu = false
+            hasil.onSuccess { akunBaru ->
+                daftarAkunDrive = DriveStore.tambahAkun(ctx, akunBaru)
+                DriveApi.resetToken(akunBaru.email)
+                sinkronAkun()
+                message = if (akunBaru.email.isNotBlank()) "Login berhasil: ${akunBaru.email}" else "Login akun lain berhasil"
+                reloadDrive()
+            }.onFailure { e ->
+                message = "Login gagal: ${e.message}"
+            }
+        }
+    }
+
     /** Dialog Google: otorisasi -> tampilkan UI Google SETIAP kali diminta
      * (bisa berurutan: pilih akun lalu persetujuan izin) -> tukar kode. */
-    private suspend fun prosesLoginDialog(ctx: android.content.Context): AkunDrive {
+    private suspend fun prosesLoginDialog(
+        ctx: android.content.Context,
+        akun: android.accounts.Account? = null,
+    ): AkunDrive {
         var hasilAwal: AuthorizationResult? = null
         var putaran = 0
         while (hasilAwal == null) {
             val coba = withContext(Dispatchers.IO) {
-                runCatching { DriveLoginGoogle.otorisasi(ctx) }
+                runCatching { DriveLoginGoogle.otorisasi(ctx, akun) }
             }
             hasilAwal = coba.getOrElse { e ->
                 if (e is DriveLoginGoogle.PerluResolusi && putaran < 4) {

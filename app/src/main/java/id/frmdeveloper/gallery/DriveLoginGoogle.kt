@@ -36,8 +36,8 @@ object DriveLoginGoogle {
     class PerluResolusi(val pendingIntent: PendingIntent) :
         Exception("Perlu pilihan akun/izin dari user")
 
-    private fun permintaan(): AuthorizationRequest =
-        AuthorizationRequest.builder()
+    private fun permintaan(akun: android.accounts.Account? = null): AuthorizationRequest {
+        val pembangun = AuthorizationRequest.builder()
             .setRequestedScopes(
                 listOf(
                     Scope("https://www.googleapis.com/auth/drive"),
@@ -45,7 +45,11 @@ object DriveLoginGoogle {
                 )
             )
             .requestOfflineAccess(DriveAuth.webClientId, true)
-            .build()
+        // Kunci ke satu akun tertentu (buat pemilih akun pas tambah akun) —
+        // tanpa ini dialog selalu memakai akun yg sudah nempel di HP.
+        if (akun != null) pembangun.setAccount(akun)
+        return pembangun.build()
+    }
 
     /**
      * Minta otorisasi ke Google. BLOCKING (Tasks.await) — panggil dari IO.
@@ -53,9 +57,9 @@ object DriveLoginGoogle {
      * selesai & user menyetujui, panggil fungsi ini sekali lagi buat
      * mengambil hasilnya (server auth code).
      */
-    fun otorisasi(ctx: Context): AuthorizationResult {
+    fun otorisasi(ctx: Context, akun: android.accounts.Account? = null): AuthorizationResult {
         val hasil = try {
-            Tasks.await(Identity.getAuthorizationClient(ctx).authorize(permintaan()))
+            Tasks.await(Identity.getAuthorizationClient(ctx).authorize(permintaan(akun)))
         } catch (e: java.util.concurrent.ExecutionException) {
             throw (e.cause ?: e)
         }
