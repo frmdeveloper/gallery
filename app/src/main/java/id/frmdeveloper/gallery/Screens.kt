@@ -1368,12 +1368,15 @@ fun MenuScreen(
                 BarisMenu(
                     judul = "Google Drive",
                     sub = if (vm.loginMenunggu) {
-                        "Menunggu login di browser… ketuk buat batal"
+                        "Menunggu login… ketuk buat batal"
                     } else {
                         "Belum terhubung — ketuk buat login"
                     },
                     onClick = {
-                        if (vm.loginMenunggu) vm.batalLogin() else onLoginAkunLain()
+                        // Login pertama juga lewat lembar pemilih akun Google
+                        // (jalur yg sama kayak Tambah akun, v1.56) — bukan
+                        // dialog otorisasi langsung yg milih akun sendiri.
+                        if (vm.loginMenunggu) vm.batalLogin() else mulaiTambahAkun()
                     },
                 ) {
                     Image(
@@ -1528,7 +1531,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Tentang",
-                sub = "Galeri FRM 1.56",
+                sub = "Galeri FRM 1.57",
                 onClick = { tentangOpen = true },
             ) {
                 Icon(
