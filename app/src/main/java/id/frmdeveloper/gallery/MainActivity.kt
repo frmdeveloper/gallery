@@ -87,7 +87,10 @@ class MainActivity : ComponentActivity() {
     private val peluncurResolusiDrive = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
     ) { hasil ->
-        vmGaleri?.selesaikanResolusiDrive(hasil.resultCode == android.app.Activity.RESULT_OK)
+        vmGaleri?.selesaikanResolusiDrive(
+            hasil.resultCode == android.app.Activity.RESULT_OK,
+            hasil.data,
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

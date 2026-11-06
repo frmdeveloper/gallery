@@ -64,6 +64,15 @@ object DriveLoginGoogle {
         return hasil
     }
 
+    /**
+     * Ambil hasil otorisasi dari Intent bawaan resolusi (dipakai sesudah
+     * user menyelesaikan lembar Google). Melempar/null bila intent bukan
+     * hasil otorisasi atau user menolak di dalamnya.
+     */
+    fun hasilDariIntent(ctx: Context, data: android.content.Intent): AuthorizationResult? =
+        runCatching { Identity.getAuthorizationClient(ctx).getAuthorizationResultFromIntent(data) }
+            .getOrNull()
+
     /** Tukar server auth code -> (refreshToken, email akun). Blocking, dari IO. */
     fun tukarKodeServer(code: String): Pair<String, String> {
         val body = listOf(

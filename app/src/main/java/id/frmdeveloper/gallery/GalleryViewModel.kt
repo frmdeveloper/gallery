@@ -69,8 +69,10 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
     /** Jembatan ke Activity buat menampilkan dialog izin Google (GMS). */
     var peluncurResolusiDrive: ((android.app.PendingIntent) -> Unit)? = null
     private var lanjutResolusi: ((Boolean) -> Unit)? = null
+    private var dataResolusi: android.content.Intent? = null
 
-    fun selesaikanResolusiDrive(ok: Boolean) {
+    fun selesaikanResolusiDrive(ok: Boolean, data: android.content.Intent? = null) {
+        dataResolusi = data
         val l = lanjutResolusi
         lanjutResolusi = null
         l?.invoke(ok)
@@ -222,7 +224,14 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
                 if (e is DriveLoginGoogle.PerluResolusi && putaran < 4) {
                     putaran++
                     if (!tungguResolusi(e.pendingIntent)) error("Login dibatalkan")
-                    null
+                    // Hasil otorisasi biasanya IKUT di intent hasil resolusi;
+                    // authorize() ulang malah memicu lembar Google dari awal
+                    // lagi (kejadian v1.51: muter-muter). Ambil dari intent
+                    // dulu; authorize ulang cuma bila intent tak membawa hasil.
+                    val data = dataResolusi
+                    dataResolusi = null
+                    val dariIntent = data?.let { DriveLoginGoogle.hasilDariIntent(ctx, it) }
+                    if (dariIntent != null && !dariIntent.hasResolution()) dariIntent else null
                 } else {
                     throw e
                 }
