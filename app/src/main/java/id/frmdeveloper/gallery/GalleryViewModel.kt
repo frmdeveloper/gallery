@@ -1,6 +1,7 @@
 package id.frmdeveloper.gallery
 
 import android.app.Application
+import android.content.ContentUris
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -24,6 +25,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import com.google.android.gms.auth.api.identity.AuthorizationResult
+import android.app.RecoverableSecurityException
+import android.content.ContentValues
+import android.app.PendingIntent
+import android.provider.MediaStore
 
 class GalleryViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -115,6 +120,458 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
     /** Tampilkan pesan snackbar dari lapisan UI (mis. jalur hapus). */
     fun beriTahu(teks: String) {
         message = teks
+    }
+
+    /** Pindah massal yg tertahan izin tulis MediaStore (dari seret-ke-album). */
+    data class PindahTertunda(
+        val items: List<MediaItem>,
+        val album: Album,
+        val pendingIntent: PendingIntent,
+        val sudahSukses: Int = 0,
+        val gagalLain: Int = 0,
+        val targetRel: String = "",
+        val catatan: String = "",
+    )
+
+    var pindahPerluIzin by mutableStateOf<PindahTertunda?>(null)
+        private set
+
+    /** Ganti nama yg tertahan izin tulis MediaStore (dari Rincian → Ubah). */
+    data class GantiNamaTertunda(
+        val item: MediaItem,
+        val namaBaru: String,
+        val pendingIntent: PendingIntent,
+    )
+
+    var gantiNamaPerluIzin by mutableStateOf<GantiNamaTertunda?>(null)
+        private set
+
+    /** Ubah nama berkas: lokal via MediaStore, Drive via API. */
+    fun gantiNama(item: MediaItem, namaBaru: String) {
+        if (namaBaru.isBlank() || namaBaru == item.name) return
+        viewModelScope.launch {
+            if (item.isDrive) {
+                val akun = daftarAkunDrive.firstOrNull { it.email == item.akunDrive }
+                val driveId = item.driveId
+                if (akun == null || driveId.isNullOrBlank()) {
+                    beriTahu("Gagal mengubah nama")
+                    return@launch
+                }
+                val ok = withContext(Dispatchers.IO) {
+                    DriveApi.gantiNamaFile(akun, driveId, namaBaru)
+                }
+                if (ok) {
+                    perbaruiNamaDiPool(item, namaBaru)
+                    beriTahu("Nama diubah jadi $namaBaru")
+                } else {
+                    beriTahu("Gagal mengubah nama di Drive")
+                }
+            } else {
+                gantiNamaLokal(item, namaBaru, bolehIzin = true)
+            }
+        }
+    }
+
+    private suspend fun gantiNamaLokal(item: MediaItem, namaBaru: String, bolehIzin: Boolean) {
+        val ctx = getApplication<Application>()
+        val hasil = withContext(Dispatchers.IO) {
+            runCatching {
+                val nilai = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, namaBaru)
+                }
+                ctx.contentResolver.update(uriMedia(item), nilai, null, null)
+            }
+        }
+        val baris = hasil.getOrNull()
+        when {
+            baris != null && baris > 0 -> {
+                perbaruiNamaDiPool(item, namaBaru)
+                beriTahu("Nama diubah jadi $namaBaru")
+            }
+            hasil.exceptionOrNull() is SecurityException && bolehIzin -> {
+                val pi = withContext(Dispatchers.IO) {
+                    runCatching {
+                        MediaStore.createWriteRequest(
+                            ctx.contentResolver, listOf(uriMedia(item)),
+                        )
+                    }.getOrNull()
+                }
+                if (pi != null) {
+                    gantiNamaPerluIzin = GantiNamaTertunda(item, namaBaru, pi)
+                } else {
+                    beriTahu("Gagal mengubah nama: izin tidak tersedia")
+                }
+            }
+            else -> beriTahu(
+                "Gagal mengubah nama: " +
+                    (hasil.exceptionOrNull()?.message ?: "berkas tidak berubah")
+            )
+        }
+    }
+
+    fun selesaikanGantiNamaSetelahIzin(ok: Boolean) {
+        val t = gantiNamaPerluIzin ?: return
+        gantiNamaPerluIzin = null
+        if (!ok) {
+            beriTahu("Izin ubah nama dibatalkan")
+            return
+        }
+        viewModelScope.launch { gantiNamaLokal(t.item, t.namaBaru, bolehIzin = false) }
+    }
+
+    private fun perbaruiNamaDiPool(item: MediaItem, namaBaru: String) {
+        media = media.map { if (it.key == item.key) it.copy(name = namaBaru) else it }
+        driveItems = driveItems.map {
+            if (it.key == item.key) it.copy(name = namaBaru) else it
+        }
+    }
+
+    private fun volumeItem(uri: Uri): String = uri.pathSegments.firstOrNull() ?: "external"
+
+    /**
+     * URI koleksi KHUSUS tipe media (Images/Video) buat item lokal.
+     * URI item dari scan memakai koleksi generik "file"
+     * (content://media/external/file/<id>) — update kolom RELATIVE_PATH
+     * lewat koleksi generik itu tidak bisa diandalkan (pindah di HP user
+     * selalu 0 sukses), jadi operasi tulis kolom lewat koleksi per-tipe.
+     */
+    private fun uriMedia(item: MediaItem): Uri {
+        if (item.isDrive) return item.uri
+        val id = item.uri.pathSegments.lastOrNull()?.toLongOrNull() ?: return item.uri
+        val koleksi = if (item.isVideo) {
+            MediaStore.Video.Media.getContentUri(volumeItem(item.uri))
+        } else {
+            MediaStore.Images.Media.getContentUri(volumeItem(item.uri))
+        }
+        return ContentUris.withAppendedId(koleksi, id)
+    }
+
+    /**
+     * Pindah BANYAK item ke album tujuan (hasil drop seretan mode pilih —
+     * model video referensi user: pilih dulu, baru seret yg terpilih).
+     * Lokal = pindah folder beneran via MediaStore; Drive = ganti parent
+     * folder; Favorit = tandai favorit (bukan folder fisik).
+     */
+    fun pindahBanyakKeAlbum(items: List<MediaItem>, album: Album) {
+        if (items.isEmpty()) return
+        when (album.kind) {
+            AlbumKind.FAVORITES -> {
+                var n = 0
+                for (item in items) {
+                    if (!isFavorite(item)) {
+                        toggleFavorite(item)
+                        n++
+                    }
+                }
+                beriTahu(if (n == 0) "Sudah di Favorit semua" else "$n ditambah ke Favorit")
+            }
+            AlbumKind.LOCAL -> pindahLokalBanyak(items, album)
+            AlbumKind.DRIVE -> pindahDriveBanyak(items, album)
+        }
+    }
+
+    private fun laporPindah(album: Album, sukses: Int, tidakIkut: Int, sebab: String? = null) {
+        beriTahu(
+            buildString {
+                append("$sukses dipindah ke ${album.name}")
+                if (tidakIkut > 0) append(" • $tidakIkut tidak ikut")
+                if (sukses == 0 && sebab != null) append(" — ${sebab.take(90)}")
+            }
+        )
+    }
+
+    private fun pindahLokalBanyak(items: List<MediaItem>, album: Album, targetOverride: String? = null) {
+        val lokal = items.filter { !it.isDrive }
+        if (lokal.isEmpty()) {
+            beriTahu("Foto Drive cuma bisa pindah ke album Drive")
+            return
+        }
+        val dilewati = items.size - lokal.size
+        val target = targetOverride ?: album.items.firstOrNull { !it.isDrive }?.relativePath.orEmpty()
+        if (target.isBlank()) {
+            beriTahu("Album tujuan kosong — tidak bisa dipindah ke sana")
+            return
+        }
+        val perluGeser = lokal.filter { it.relativePath != target }
+        if (perluGeser.isEmpty()) {
+            beriTahu("Sudah di album itu")
+            return
+        }
+        val resolver = getApplication<Application>().contentResolver
+        viewModelScope.launch {
+            var sukses = 0
+            var gagal = 0
+            var sebab: String? = null
+            val butuhIzin = mutableListOf<MediaItem>()
+            withContext(Dispatchers.IO) {
+                for (item in perluGeser) {
+                    runCatching {
+                        val cv = ContentValues().apply {
+                            put(MediaStore.Files.FileColumns.RELATIVE_PATH, target)
+                        }
+                        resolver.update(uriMedia(item), cv, null, null)
+                    }.onSuccess { baris ->
+                        if (baris > 0) {
+                            sukses++
+                        } else {
+                            gagal++
+                            if (sebab == null) sebab = "MediaStore menolak perpindahan"
+                        }
+                    }.onFailure { e ->
+                        if (e is RecoverableSecurityException || e is SecurityException) {
+                            butuhIzin += item
+                        } else {
+                            gagal++
+                            if (sebab == null) {
+                                sebab = "${e.javaClass.simpleName}: ${e.message ?: "tanpa pesan"}"
+                            }
+                            android.util.Log.e("GaleriPindah", "gagal update ${item.uri}", e)
+                        }
+                    }
+                }
+            }
+            if (butuhIzin.isNotEmpty()) {
+                // SATU dialog izin buat semua file sekaligus
+                // (createWriteRequest), bukan satu-satu per file.
+                val pi = withContext(Dispatchers.IO) {
+                    MediaStore.createWriteRequest(resolver, butuhIzin.map { uriMedia(it) })
+                }
+                pindahPerluIzin = PindahTertunda(butuhIzin, album, pi, sukses, gagal + dilewati, target, sebab ?: "")
+                return@launch
+            }
+            laporPindah(album, sukses, gagal + dilewati, sebab)
+            if (sukses > 0) reloadLocal()
+        }
+    }
+
+    /** Lanjutan sesudah dialog izin MediaStore dijawab user. */
+    fun selesaikanPindahSetelahIzin(disetujui: Boolean) {
+        val p = pindahPerluIzin ?: return
+        pindahPerluIzin = null
+        if (!disetujui) {
+            beriTahu(
+                if (p.sudahSukses > 0) "Izin ditolak — ${p.sudahSukses} sudah terlanjur pindah"
+                else "Izin pindah ditolak"
+            )
+            if (p.sudahSukses > 0) reloadLocal()
+            return
+        }
+        val target = p.targetRel.ifBlank {
+            p.album.items.firstOrNull { !it.isDrive }?.relativePath.orEmpty()
+        }
+        if (target.isBlank()) {
+            beriTahu("Album tujuan tidak dikenal")
+            return
+        }
+        val resolver = getApplication<Application>().contentResolver
+        viewModelScope.launch {
+            var sukses = 0
+            var sebab: String? = null
+            withContext(Dispatchers.IO) {
+                for (item in p.items) {
+                    runCatching {
+                        val cv = ContentValues().apply {
+                            put(MediaStore.Files.FileColumns.RELATIVE_PATH, target)
+                        }
+                        resolver.update(uriMedia(item), cv, null, null)
+                    }.onSuccess { baris ->
+                        if (baris > 0) sukses++
+                        else if (sebab == null) sebab = "MediaStore menolak perpindahan"
+                    }.onFailure { e ->
+                        if (sebab == null) {
+                            sebab = "${e.javaClass.simpleName}: ${e.message ?: "tanpa pesan"}"
+                        }
+                        android.util.Log.e("GaleriPindah", "gagal ulang update ${item.uri}", e)
+                    }
+                }
+            }
+            val totalOk = p.sudahSukses + sukses
+            laporPindah(
+                p.album, totalOk, p.gagalLain + (p.items.size - sukses),
+                sebab ?: p.catatan.ifBlank { null },
+            )
+            if (totalOk > 0) reloadLocal()
+        }
+    }
+
+    private fun pindahDriveBanyak(items: List<MediaItem>, album: Album) {
+        if (!album.id.startsWith("driveapi:")) {
+            beriTahu("Album Drive mode folder belum bisa jadi tujuan pindah")
+            return
+        }
+        val akun = daftarAkunDrive.firstOrNull { it.email == album.akun }
+        if (akun == null) {
+            beriTahu("Akun Drive tidak ditemukan")
+            return
+        }
+        val parentBaru = if (album.id.endsWith(":all")) {
+            "root"
+        } else {
+            album.items.firstOrNull()?.bucketId?.removePrefix("driveapi:").orEmpty()
+        }
+        if (parentBaru.isBlank()) {
+            beriTahu("Folder tujuan tidak dikenal")
+            return
+        }
+        val kandidat = items.filter {
+            it.isDrive && it.akunDrive == album.akun &&
+                it.bucketId.removePrefix("driveapi:") != parentBaru
+        }
+        if (kandidat.isEmpty()) {
+            beriTahu("Tidak ada yg bisa dipindah ke ${album.name}")
+            return
+        }
+        beriTahu("Memindah ${kandidat.size} ke ${album.name}…")
+        viewModelScope.launch {
+            var ok = 0
+            withContext(Dispatchers.IO) {
+                for (item in kandidat) {
+                    if (DriveApi.pindahFile(
+                            akun, item.driveId, parentBaru,
+                            item.bucketId.removePrefix("driveapi:"),
+                        )
+                    ) ok++
+                }
+            }
+            beriTahu(
+                if (ok == kandidat.size) "$ok dipindah ke ${album.name}"
+                else "$ok dari ${kandidat.size} berhasil dipindah"
+            )
+            if (ok > 0) reloadDrive()
+        }
+    }
+
+    /** Buat album lokal BARU (folder Pictures/<nama>) lalu pindahkan item ke sana. */
+    fun pindahKeFolderBaru(items: List<MediaItem>, nama: String) {
+        val bersih = nama.trim().replace(Regex("[\\\\/:*?\"<>|]"), "").trim()
+        if (bersih.isEmpty()) {
+            beriTahu("Nama album tidak valid")
+            return
+        }
+        val albumBaru = Album(
+            id = "local:baru:$bersih", name = bersih,
+            kind = AlbumKind.LOCAL, items = emptyList(),
+        )
+        pindahLokalBanyak(items, albumBaru, targetOverride = "Pictures/$bersih/")
+    }
+
+    /**
+     * SALIN banyak item ke album tujuan (asli tetap di tempat) — pasangan
+     * "Pindahkan ke album" di menu Lainnya. Lokal = buat file baru di folder
+     * tujuan + salin isinya; Drive = files.copy; Favorit = tandai favorit.
+     */
+    fun salinBanyakKeAlbum(items: List<MediaItem>, album: Album) {
+        if (items.isEmpty()) return
+        when (album.kind) {
+            AlbumKind.FAVORITES -> pindahBanyakKeAlbum(items, album)
+            AlbumKind.LOCAL -> salinLokalBanyak(items, album)
+            AlbumKind.DRIVE -> salinDriveBanyak(items, album)
+        }
+    }
+
+    private fun salinLokalBanyak(items: List<MediaItem>, album: Album) {
+        val lokal = items.filter { !it.isDrive }
+        if (lokal.isEmpty()) {
+            beriTahu("Foto Drive cuma bisa disalin ke album Drive")
+            return
+        }
+        val dilewati = items.size - lokal.size
+        val target = album.items.firstOrNull { !it.isDrive }?.relativePath.orEmpty()
+        if (target.isBlank()) {
+            beriTahu("Album tujuan kosong — tidak bisa menyalin ke sana")
+            return
+        }
+        val resolver = getApplication<Application>().contentResolver
+        beriTahu("Menyalin ${lokal.size} ke ${album.name}…")
+        viewModelScope.launch {
+            var ok = 0
+            var sebab: String? = null
+            withContext(Dispatchers.IO) {
+                for (item in lokal) {
+                    val suksesItem = runCatching {
+                        val cv = ContentValues().apply {
+                            put(MediaStore.Files.FileColumns.DISPLAY_NAME, item.name)
+                            put(MediaStore.Files.FileColumns.MIME_TYPE, item.mime)
+                            put(MediaStore.Files.FileColumns.RELATIVE_PATH, target)
+                        }
+                        // Insert lewat koleksi per-tipe (Images/Video), sama
+                        // kayak update pindah — bukan koleksi generik "file".
+                        val koleksiTujuan = if (item.isVideo) {
+                            MediaStore.Video.Media.getContentUri(volumeItem(item.uri))
+                        } else {
+                            MediaStore.Images.Media.getContentUri(volumeItem(item.uri))
+                        }
+                        val tujuan = resolver.insert(koleksiTujuan, cv)
+                            ?: error("insert gagal")
+                        val tersalin = resolver.openInputStream(item.uri)?.use { masukan ->
+                            resolver.openOutputStream(tujuan)?.use { keluaran ->
+                                masukan.copyTo(keluaran)
+                            } ?: -1L
+                        } ?: -1L
+                        if (tersalin < 0L) {
+                            runCatching { resolver.delete(tujuan, null, null) }
+                            error("salin gagal")
+                        }
+                        true
+                    }.onFailure { e ->
+                        if (sebab == null) {
+                            sebab = "${e.javaClass.simpleName}: ${e.message ?: "tanpa pesan"}"
+                        }
+                        android.util.Log.e("GaleriSalin", "gagal salin ${item.uri}", e)
+                    }.getOrDefault(false)
+                    if (suksesItem) ok++
+                }
+            }
+            beriTahu(
+                buildString {
+                    append("$ok disalin ke ${album.name}")
+                    val tidakIkut = (lokal.size - ok) + dilewati
+                    if (tidakIkut > 0) append(" • $tidakIkut tidak ikut")
+                    if (ok == 0 && sebab != null) append(" — ${sebab.take(90)}")
+                }
+            )
+            if (ok > 0) reloadLocal()
+        }
+    }
+
+    private fun salinDriveBanyak(items: List<MediaItem>, album: Album) {
+        if (!album.id.startsWith("driveapi:")) {
+            beriTahu("Album Drive mode folder belum bisa jadi tujuan salin")
+            return
+        }
+        val akun = daftarAkunDrive.firstOrNull { it.email == album.akun }
+        if (akun == null) {
+            beriTahu("Akun Drive tidak ditemukan")
+            return
+        }
+        val parentBaru = if (album.id.endsWith(":all")) {
+            "root"
+        } else {
+            album.items.firstOrNull()?.bucketId?.removePrefix("driveapi:").orEmpty()
+        }
+        if (parentBaru.isBlank()) {
+            beriTahu("Folder tujuan tidak dikenal")
+            return
+        }
+        val kandidat = items.filter { it.isDrive && it.akunDrive == album.akun }
+        if (kandidat.isEmpty()) {
+            beriTahu("Tidak ada yg bisa disalin ke ${album.name}")
+            return
+        }
+        beriTahu("Menyalin ${kandidat.size} ke ${album.name}…")
+        viewModelScope.launch {
+            var ok = 0
+            withContext(Dispatchers.IO) {
+                for (item in kandidat) {
+                    if (DriveApi.salinFile(akun, item.driveId, parentBaru)) ok++
+                }
+            }
+            beriTahu(
+                if (ok == kandidat.size) "$ok disalin ke ${album.name}"
+                else "$ok dari ${kandidat.size} berhasil disalin"
+            )
+            if (ok > 0) reloadDrive()
+        }
     }
 
     fun reloadLocal() {

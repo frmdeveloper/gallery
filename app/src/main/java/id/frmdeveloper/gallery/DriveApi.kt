@@ -170,6 +170,32 @@ object DriveApi {
     fun accessTokenUntukEmail(email: String): String? =
         akunUntukEmail(email)?.let { accessTokenBlocking(it) } ?: accessTokenBlocking()
 
+    /** Pindah file Drive ke folder lain (ganti parent). true kalau sukses. */
+    fun pindahFile(akun: AkunDrive, fileId: String, parentBaru: String, parentLama: String): Boolean {
+        val token = accessTokenBlocking(akun) ?: return false
+        val url = "$API/files/$fileId?addParents=${enc(parentBaru)}&removeParents=${enc(parentLama)}"
+        val (code, _) = request("PATCH", url, token)
+        return code in 200..299
+    }
+
+    /** Ubah nama file Drive (PATCH files/{id} dgn name baru). */
+    fun gantiNamaFile(akun: AkunDrive, fileId: String, namaBaru: String): Boolean {
+        val token = accessTokenBlocking(akun) ?: return false
+        val body = JSONObject().put("name", namaBaru).toString()
+        val (code, _) = request("PATCH", "$API/files/$fileId", token, body)
+        return code in 200..299
+    }
+
+    /** Salin file ke folder lain (POST files/{id}/copy) — file aslinya tetap. */
+    fun salinFile(akun: AkunDrive, fileId: String, parentBaru: String): Boolean {
+        val token = accessTokenBlocking(akun) ?: return false
+        val body = JSONObject()
+            .put("parents", JSONArray().put(parentBaru))
+            .toString()
+        val (code, _) = request("POST", "$API/files/$fileId/copy", token, body)
+        return code in 200..299
+    }
+
     private fun request(
         method: String,
         url: String,

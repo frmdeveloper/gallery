@@ -1,6 +1,7 @@
 package id.frmdeveloper.gallery
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -28,6 +30,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
@@ -36,9 +43,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -63,6 +74,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -76,6 +89,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -121,7 +135,14 @@ import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.Job
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -148,7 +169,6 @@ import coil.compose.AsyncImage
 @Composable
 private fun ZoomableImage(
     item: MediaItem,
-    rotasi: Float,
     onTap: () -> Unit,
     aktif: Boolean = false,
     onSkalaBerubah: (Float) -> Unit = {},
@@ -267,7 +287,6 @@ private fun ZoomableImage(
                 .graphicsLayer(
                     scaleX = scale, scaleY = scale,
                     translationX = offset.x, translationY = offset.y,
-                    rotationZ = rotasi,
                 ),
         )
     }
@@ -299,6 +318,80 @@ private fun TombolKaca(
 }
 
 
+/**
+ * Kontrol PRATINJAU video — baris tombol IKON SAJA di tengah bawah
+ * (posisi baris pill foto Samsung, ~89% tinggi layar):
+ * [play/pause] [layar penuh -> pemutar lengkap] [bisu] bersebelahan,
+ * tanpa teks sama sekali (perintah user 2026-11-07).
+ */
+@Composable
+private fun PratinjauKontrol(
+    kontrolTampil: Boolean,
+    panelTerbuka: Boolean,
+    muter: Boolean,
+    selesai: Boolean,
+    bisu: Boolean,
+    onTogglePutar: () -> Unit,
+    onToggleBisu: () -> Unit,
+    onBukaPlayer: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = kontrolTampil && !panelTerbuka,
+            enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 },
+            exit = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 71.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF45484D),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.size(46.dp),
+                ) {
+                    IconButton(onClick = onTogglePutar) {
+                        Icon(
+                            if (muter) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            if (muter) "Jeda" else "Putar",
+                            tint = Color.White, modifier = Modifier.size(23.dp),
+                        )
+                    }
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF45484D),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.size(46.dp),
+                ) {
+                    IconButton(onClick = onBukaPlayer) {
+                        Icon(
+                            Icons.Filled.Fullscreen, "Pemutar lengkap",
+                            tint = Color.White, modifier = Modifier.size(23.dp),
+                        )
+                    }
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF45484D),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.size(46.dp),
+                ) {
+                    IconButton(onClick = onToggleBisu) {
+                        Icon(
+                            if (bisu) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                            if (bisu) "Suara mati" else "Suara nyala",
+                            tint = Color.White, modifier = Modifier.size(23.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun VideoPage(
     item: MediaItem,
@@ -320,6 +413,10 @@ private fun VideoPage(
     sambungan: Pair<String, Long>? = null,
     onSambunganTerpakai: () -> Unit = {},
     onKunciPager: (Boolean) -> Unit = {},
+    panelTerbuka: Boolean = false,
+    onBarTampil: (Boolean) -> Unit = {},
+    onPlayerPenuh: (Boolean) -> Unit = {},
+    onPutarLayar: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
@@ -360,6 +457,22 @@ private fun VideoPage(
     var rasioIdx by remember(item.key) { mutableIntStateOf(0) }
     var layarPenuh by remember(item.key) { mutableStateOf(false) }
     var tick by remember(item.key) { mutableIntStateOf(0) }
+    // Dua lapis ala Samsung: PRATINJAU (video autoplay di halaman penampil,
+    // krom penampil yg ngambang) -> tombol pemutar masuk PLAYER PENUH
+    // (kontrol kaca lengkap). Back dari player = balik ke pratinjau.
+    var playerPenuh by remember(item.key) { mutableStateOf(false) }
+    var bisu by remember(item.key) { mutableStateOf(true) }
+    LaunchedEffect(kontrolVisible, isCurrent) {
+        if (isCurrent) onBarTampil(kontrolVisible)
+    }
+    LaunchedEffect(playerPenuh, isCurrent) {
+        if (isCurrent) onPlayerPenuh(playerPenuh)
+    }
+    LaunchedEffect(bisu) { player.volume = if (bisu) 0f else 1f }
+    BackHandler(enabled = playerPenuh && !modeMusik) {
+        playerPenuh = false
+        bisu = true
+    }
 
     // Kembali pas mode musik aktif = keluar mode dulu, bukan keluar penampil
     BackHandler(enabled = modeMusik) { onModeMusik(false) }
@@ -400,16 +513,9 @@ private fun VideoPage(
             player.release()
         }
     }
-    // Lepas mode immersif + orientasi paksa pas halaman ditinggal
-    DisposableEffect(Unit) {
-        onDispose {
-            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            activity?.window?.let { w ->
-                val c = androidx.core.view.WindowCompat.getInsetsController(w, w.decorView)
-                c.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-            }
-        }
-    }
+    // (Reset orientasi + system bar pas keluar penampil sekarang diurus
+    // ViewerScreen sekali per sesi — reset per halaman di sini bikin
+    // orientasi kelepas di tengah sesi & tombol putar kayak gak jalan.)
     LaunchedEffect(isCurrent) {
         if (isCurrent) player.play() else player.pause()
     }
@@ -471,13 +577,8 @@ private fun VideoPage(
     }
 
     fun putarLayar() {
-        val a = activity ?: return
-        val sekarang = context.resources.configuration.orientation
-        a.requestedOrientation = if (sekarang == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
-            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        } else {
-            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        }
+        // Mekanisme bareng ViewerScreen: memutar LAYAR (orientasi)
+        onPutarLayar()
         sentuh()
     }
 
@@ -527,7 +628,14 @@ private fun VideoPage(
     }
 
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                if (playerPenuh || modeMusik) Color.Black
+                else MaterialTheme.colorScheme.background
+            ),
+    ) {
         if (modeMusik) {
             LayarModeMusikVideo(
                 item = item,
@@ -573,7 +681,33 @@ private fun VideoPage(
                 },
         )
 
-        if (terkunci) {
+        if (!playerPenuh) {
+            PratinjauKontrol(
+                kontrolTampil = kontrolVisible,
+                panelTerbuka = panelTerbuka,
+                muter = muter,
+                selesai = selesai,
+                bisu = bisu,
+                onTogglePutar = {
+                    if (selesai) {
+                        player.seekTo(0)
+                        player.play()
+                    } else if (muter) {
+                        player.pause()
+                    } else {
+                        player.play()
+                    }
+                    sentuh()
+                },
+                onToggleBisu = { bisu = !bisu },
+                onBukaPlayer = {
+                    bisu = false
+                    playerPenuh = true
+                    kontrolVisible = true
+                    sentuh()
+                },
+            )
+        } else if (terkunci) {
             TombolKaca(
                 onClick = { terkunci = false; kontrolVisible = true; sentuh() },
                 modifier = Modifier
@@ -583,7 +717,16 @@ private fun VideoPage(
             ) {
                 Icon(Icons.Filled.Lock, "Buka kunci", tint = Color.White, modifier = Modifier.size(19.dp))
             }
-        } else if (kontrolVisible) {
+        } else {
+            // Kontrol muncul/hilang dengan FADE SMOOTH pas diketuk /
+            // auto-sembunyi (perintah user: tap sekali -> bar hilang smooth).
+            AnimatedVisibility(
+                visible = kontrolVisible,
+                enter = fadeIn(tween(220)),
+                exit = fadeOut(tween(200)),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+            Box(Modifier.fillMaxSize()) {
             // Gradasi halus atas & bawah ala iOS (gantinya pill hitam tebal)
             Box(
                 Modifier
@@ -803,6 +946,8 @@ private fun VideoPage(
                     }
                 }
             }
+            }
+        }
         }
 
         }
@@ -997,7 +1142,7 @@ private fun LayarModeMusikVideo(
             )
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1320,6 +1465,228 @@ private fun FastOption(icon: ImageVector, label: String, onClick: () -> Unit) {
     }
 }
 
+private fun formatTanggalRincian(millis: Long): String =
+    java.text.SimpleDateFormat("EEEE, dd MMMM yyyy · HH.mm", java.util.Locale("id", "ID"))
+        .format(java.util.Date(millis))
+
+private fun labelKualitas(w: Int, h: Int): String {
+    val pendek = minOf(w, h)
+    return when {
+        pendek >= 2160 -> "UHD"
+        pendek >= 1080 -> "FHD"
+        pendek >= 720 -> "HD"
+        else -> "SD"
+    }
+}
+
+private fun jalurTampil(item: MediaItem): String {
+    if (item.isDrive) {
+        return "Google Drive" +
+            if (item.akunDrive.isNotBlank()) " • ${item.akunDrive}" else ""
+    }
+    val akar = if (item.path.startsWith("/storage/") &&
+        !item.path.startsWith("/storage/emulated/0")
+    ) {
+        "/Kartu SD"
+    } else {
+        "/Penyimpanan internal"
+    }
+    val rel = item.relativePath.trim().trimEnd('/')
+    return if (rel.isEmpty()) akar else "$akar/$rel"
+}
+
+/** Codec video/audio + fps dari MediaExtractor (lokal saja; null kalau gagal). */
+private fun bacaInfoCodec(
+    context: android.content.Context,
+    uri: Uri,
+): Triple<String, String, String>? {
+    val extractor = android.media.MediaExtractor()
+    return try {
+        extractor.setDataSource(context, uri, null)
+        var video = ""
+        var audio = ""
+        var fps = ""
+        for (i in 0 until extractor.trackCount) {
+            val fmt = extractor.getTrackFormat(i)
+            val mime = fmt.getString(android.media.MediaFormat.KEY_MIME) ?: continue
+            when {
+                mime.startsWith("video/") -> {
+                    video = when (mime) {
+                        "video/avc" -> "H.264"
+                        "video/hevc" -> "H.265"
+                        "video/av01" -> "AV1"
+                        "video/x-vnd.on2.vp9" -> "VP9"
+                        else -> mime.removePrefix("video/").uppercase()
+                    }
+                    if (fmt.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
+                        val f = fmt.getInteger(android.media.MediaFormat.KEY_FRAME_RATE)
+                        if (f > 0) fps = "${f}fps"
+                    }
+                }
+                mime.startsWith("audio/") -> {
+                    audio = when (mime) {
+                        "audio/mp4a-latm" -> "AAC"
+                        "audio/mpeg" -> "MP3"
+                        "audio/opus" -> "Opus"
+                        "audio/flac" -> "FLAC"
+                        else -> mime.removePrefix("audio/").uppercase()
+                    }
+                }
+            }
+        }
+        if (video.isEmpty() && audio.isEmpty()) null else Triple(video, audio, fps)
+    } catch (e: Exception) {
+        null
+    } finally {
+        extractor.release()
+    }
+}
+
+/**
+ * Panel rincian ala Samsung (screenshot user): tanggal tebal + Ubah,
+ * nama & jalur abu, Info gambar/video + spek dipisah "|".
+ * Chip "# Tambah tag" SENGAJA gak ikut — app ini gak punya sistem tag.
+ */
+@Composable
+private fun PanelRincian(
+    item: MediaItem,
+    onGeserPanel: (Float) -> Unit,
+    bacaGeserPanel: () -> Float,
+    onSelesaiGeserPanel: () -> Unit,
+    onUbah: () -> Unit,
+) {
+    val context = LocalContext.current
+    var infoCodec by remember(item.key) { mutableStateOf<Triple<String, String, String>?>(null) }
+    LaunchedEffect(item.key) {
+        if (item.isVideo && !item.isDrive) {
+            infoCodec = withContext(Dispatchers.IO) { bacaInfoCodec(context, item.uri) }
+        }
+    }
+    val gulir = rememberScrollState()
+    // Tarik panel mengikuti jari: sisa geser pas scroll mentok di atas
+    // diteruskan ke fraksi panel secara LANGSUNG (onGeserPanel); seret ke
+    // atas pas panel lagi ketarik dikonsumsi duluan buat mulihin posisi.
+    // Pas gestur lepas, onSelesaiGeserPanel mutusin nutup / memantul.
+    val koneksiTarik = object : NestedScrollConnection {
+        override fun onPreScroll(
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            if (source == NestedScrollSource.UserInput && available.y < 0f) {
+                val sisa = bacaGeserPanel()
+                if (sisa > 0f) {
+                    val pakai = minOf(-available.y, sisa)
+                    onGeserPanel(-pakai)
+                    return Offset(0f, -pakai)
+                }
+            }
+            return Offset.Zero
+        }
+
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            if (source == NestedScrollSource.UserInput && available.y > 0f &&
+                gulir.value == 0
+            ) {
+                onGeserPanel(available.y)
+            }
+            return Offset.Zero
+        }
+
+        override suspend fun onPreFling(available: Velocity): Velocity {
+            onSelesaiGeserPanel()
+            return super.onPreFling(available)
+        }
+
+        override suspend fun onPostFling(
+            consumed: Velocity,
+            available: Velocity,
+        ): Velocity {
+            onSelesaiGeserPanel()
+            return super.onPostFling(consumed, available)
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .nestedScroll(koneksiTarik),
+    ) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(gulir)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                formatTanggalRincian(item.dateMillis),
+                fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "Ubah",
+                color = Color(0xFF1976D2), fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable(onClick = onUbah),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            item.name, fontSize = 13.sp, color = Color(0xFF777777),
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            jalurTampil(item), fontSize = 13.sp, color = Color(0xFF777777),
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(18.dp))
+        Text(
+            if (item.isVideo) "Info video" else "Info gambar",
+            fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(6.dp))
+        val info1 = buildList {
+            add(formatUkuran(item.size))
+            if (item.width > 0 && item.height > 0) {
+                add("${item.width}x${item.height}")
+                if (item.isVideo) {
+                    add(labelKualitas(item.width, item.height))
+                } else {
+                    val mp = (item.width.toLong() * item.height + 500_000L) / 1_000_000L
+                    add("${mp}MP")
+                }
+            }
+        }
+        Text(
+            info1.joinToString("  |  "),
+            fontSize = 13.sp, color = Color(0xFF777777),
+        )
+        if (item.isVideo) {
+            val info2 = buildList {
+                if (item.durationMs > 0) add(formatDurasi(item.durationMs))
+                infoCodec?.let { (v, a, f) ->
+                    if (v.isNotEmpty()) add(v)
+                    if (a.isNotEmpty()) add(a)
+                    if (f.isNotEmpty()) add(f)
+                }
+            }
+            if (info2.isNotEmpty()) {
+                Text(
+                    info2.joinToString("  |  "),
+                    fontSize = 13.sp, color = Color(0xFF777777),
+                )
+            }
+        }
+    }
+    }
+}
+
 @Composable
 fun ViewerScreen(
     items: List<MediaItem>,
@@ -1328,6 +1695,7 @@ fun ViewerScreen(
     onToggleFavorite: (MediaItem) -> Unit,
     onDelete: (MediaItem) -> Unit,
     onBack: () -> Unit,
+    onGantiNama: (MediaItem, String) -> Unit = { _, _ -> },
     videoSedangDiLatar: Boolean = false,
     onSerahkanVideo: (List<MediaItem>, MediaItem, Long) -> Unit = { _, _, _ -> },
     onAmbilAlihVideo: () -> Pair<String, Long>? = { null },
@@ -1335,12 +1703,53 @@ fun ViewerScreen(
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) { items.size }
     var barsVisible by remember { mutableStateOf(true) }
-    var infoItem by remember { mutableStateOf<MediaItem?>(null) }
+    var rincianTerbuka by remember { mutableStateOf(false) }
+    var itemGantiNama by remember { mutableStateOf<MediaItem?>(null) }
     var modeMusikVideo by remember { mutableStateOf(false) }
+    var videoPlayerPenuh by remember { mutableStateOf(false) }
+    // Reset orientasi paksa + system bar SEKALI pas keluar penampil
+    // (dulu per halaman video — halaman yg ke-dispose di tengah sesi
+    // ngelepas orientasi & bikin tombol putar layar kayak gak jalan).
+    val activityVS = LocalContext.current as? android.app.Activity
+    DisposableEffect(Unit) {
+        onDispose {
+            activityVS?.requestedOrientation =
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            activityVS?.window?.let { w ->
+                val c = androidx.core.view.WindowCompat.getInsetsController(w, w.decorView)
+                c.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+    // Tombol PUTAR (foto + pemutar video): memutar LAYAR (orientasi
+    // aktivitas) — target dibaca dari konfigurasi AKTUAL pas ditekan +
+    // Toast konfirmasi biar user bisa verifikasi tombolnya kepencet &
+    // arah putarnya (diagnostik laporan "tidak merespon" 2026-11-07).
+    fun putarLayarVS() {
+        val a = activityVS
+        if (a == null) {
+            android.widget.Toast.makeText(
+                context, "Putar layar: aktivitas tidak ketemu",
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        val lanskap = a.resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        a.requestedOrientation = if (lanskap) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        android.widget.Toast.makeText(
+            context,
+            if (lanskap) "Putar layar: ke potret" else "Putar layar: ke lanskap",
+            android.widget.Toast.LENGTH_SHORT,
+        ).show()
+    }
     var sambungan by remember { mutableStateOf<Pair<String, Long>?>(null) }
     var kunciPager by remember { mutableStateOf(false) }
     val current = items.getOrNull(pagerState.currentPage)
-    var rotasi by remember(current?.key) { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
     // Balik ke aplikasi pas video lagi dioper ke latar: ambil alih —
     // lompat ke video yg lagi jalan di layanan; VideoPage-nya yg
@@ -1369,12 +1778,87 @@ fun ViewerScreen(
     var skalaKini by remember { mutableFloatStateOf(1f) }
     LaunchedEffect(pagerState.currentPage) {
         if (tarik.value != 0f) tarik.snapTo(0f)
+        if (items.getOrNull(pagerState.currentPage)?.isVideo != true) barsVisible = true
     }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // Panel rincian: media menyusut ke atas, panel naik dari bawah. Fraksi
+    // digerakkan Animatable (buka/tutup) MINUS geserPanelPx (tarikan jari
+    // di mode rincian) — jadi panel NGIKUTIN JARI pas ditarik, bukan diem
+    // terus respon pas dilepas (teguran user 2026-11-07).
+    val fraksiPanelAnim = remember { Animatable(0f) }
+    var geserPanelPx by remember { mutableFloatStateOf(0f) }
+    var tinggiLayarPx by remember { mutableIntStateOf(1) }
+    var lagiSettle by remember { mutableStateOf(false) }
+    LaunchedEffect(rincianTerbuka) {
+        if (!lagiSettle) {
+            fraksiPanelAnim.animateTo(
+                if (rincianTerbuka) 0.52f else 0f,
+                tween(durationMillis = 340, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+    fun fraksiEfektif() = (fraksiPanelAnim.value -
+        geserPanelPx / tinggiLayarPx.coerceAtLeast(1)).coerceIn(0f, 0.52f)
+    val fraksiPanel = fraksiEfektif()
+    fun selesaikanGeserPanel() {
+        val efektif = fraksiEfektif()
+        if (efektif < 0.30f) {
+            lagiSettle = true
+            rincianTerbuka = false
+            scope.launch {
+                fraksiPanelAnim.snapTo(efektif)
+                geserPanelPx = 0f
+                fraksiPanelAnim.animateTo(
+                    0f,
+                    tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                )
+                lagiSettle = false
+            }
+        } else {
+            scope.launch {
+                animate(
+                    geserPanelPx, 0f,
+                    animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f),
+                ) { v, _ -> geserPanelPx = v }
+            }
+        }
+    }
+    fun selesaikanBukaPanel() {
+        val efektif = fraksiEfektif()
+        if (efektif > 0.16f) {
+            lagiSettle = true
+            rincianTerbuka = true
+            scope.launch {
+                fraksiPanelAnim.snapTo(efektif)
+                geserPanelPx = 0f
+                fraksiPanelAnim.animateTo(
+                    0.52f,
+                    tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                )
+                lagiSettle = false
+            }
+        } else {
+            scope.launch {
+                animate(
+                    geserPanelPx, 0f,
+                    animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f),
+                ) { v, _ -> geserPanelPx = v }
+            }
+        }
+    }
+    BackHandler(enabled = rincianTerbuka) { rincianTerbuka = false }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .onSizeChanged { tinggiLayarPx = it.height },
+    ) {
       Box(
         modifier = Modifier
-            .fillMaxSize()
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .fillMaxHeight(1f - fraksiPanel)
             .graphicsLayer {
                 translationY = tarik.value
                 val s = 1f - (tarik.value / 2400f).coerceIn(0f, 0.16f)
@@ -1383,25 +1867,55 @@ fun ViewerScreen(
             }
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
+                    onDragStart = { },
                     onDragEnd = {
-                        if (tarik.value > 300f) {
-                            onBack()
-                        } else {
-                            scope.launch {
-                                tarik.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = 380f))
+                        when {
+                            rincianTerbuka -> selesaikanGeserPanel()
+                            geserPanelPx < 0f -> selesaikanBukaPanel()
+                            tarik.value > 300f -> onBack()
+                            else -> {
+                                scope.launch {
+                                    tarik.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = 380f))
+                                }
                             }
                         }
                     },
                     onDragCancel = {
-                        scope.launch {
-                            tarik.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = 380f))
+                        when {
+                            rincianTerbuka -> selesaikanGeserPanel()
+                            geserPanelPx < 0f -> selesaikanBukaPanel()
+                            else -> {
+                                scope.launch {
+                                    tarik.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = 380f))
+                                }
+                            }
                         }
                     },
                 ) { change, jumlah ->
-                    val itemKini = items.getOrNull(pagerState.currentPage)
-                    if (skalaKini <= 1.01f && itemKini?.isVideo != true) {
+                    if (rincianTerbuka) {
+                        // Mode rincian: seret di area media ngeser panel
+                        // LANGSUNG ngikutin jari (dua arah)
                         change.consume()
-                        scope.launch { tarik.snapTo((tarik.value + jumlah).coerceAtLeast(0f)) }
+                        geserPanelPx = (geserPanelPx + jumlah).coerceAtLeast(0f)
+                    } else {
+                        val itemKini = items.getOrNull(pagerState.currentPage)
+                        val bolehSeret = skalaKini <= 1.01f &&
+                            (itemKini?.isVideo != true || !videoPlayerPenuh)
+                        if (bolehSeret) {
+                            change.consume()
+                            if (geserPanelPx < 0f || (jumlah < 0f && tarik.value <= 0f)) {
+                                // Usap ke atas: panel rincian kebuka
+                                // NGIKUTIN JARI (geser negatif); seret
+                                // balik ke bawah mulihin ke 0 dulu sebelum
+                                // pull-to-dismiss ngambil alih.
+                                geserPanelPx = (geserPanelPx + jumlah)
+                                    .coerceIn(-0.52f * tinggiLayarPx, 0f)
+                            } else {
+                                scope.launch {
+                                    tarik.snapTo((tarik.value + jumlah).coerceAtLeast(0f))
+                                }
+                            }
+                        }
                     }
                 }
             },
@@ -1418,7 +1932,7 @@ fun ViewerScreen(
                     isCurrent = page == pagerState.currentPage,
                     favorit = isFavorite(item),
                     onToggleFavorite = { onToggleFavorite(item) },
-                    onInfo = { infoItem = item },
+                    onInfo = { rincianTerbuka = true },
                     tampilBerbagi = !item.isDrive,
                     onShare = { shareItems(context, listOf(item)) },
                     onDelete = { onDelete(item) },
@@ -1440,11 +1954,14 @@ fun ViewerScreen(
                     sambungan = sambungan,
                     onSambunganTerpakai = { sambungan = null },
                     onKunciPager = { kunciPager = it },
+                    panelTerbuka = rincianTerbuka,
+                    onBarTampil = { barsVisible = it },
+                    onPlayerPenuh = { videoPlayerPenuh = it },
+                    onPutarLayar = { putarLayarVS() },
                 )
             } else {
                 ZoomableImage(
                     item = item,
-                    rotasi = if (page == pagerState.currentPage) rotasi else 0f,
                     onTap = { barsVisible = !barsVisible },
                     aktif = page == pagerState.currentPage,
                     onSkalaBerubah = { skalaKini = it },
@@ -1459,16 +1976,89 @@ fun ViewerScreen(
         }
       }
 
+        // Panel rincian naik dari bawah pas fraksi > 0 (geser ke atas /
+        // tombol Rincian); isinya item yg lagi tampil.
+        if (fraksiPanel > 0.01f) {
+            current?.let { item ->
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(fraksiPanel)
+                        .graphicsLayer {
+                            alpha = (fraksiPanel / 0.52f).coerceIn(0f, 1f)
+                        },
+                ) {
+                    PanelRincian(
+                        item = item,
+                        onGeserPanel = { delta ->
+                            geserPanelPx = (geserPanelPx + delta).coerceAtLeast(0f)
+                        },
+                        bacaGeserPanel = { geserPanelPx },
+                        onSelesaiGeserPanel = { selesaikanGeserPanel() },
+                        onUbah = { itemGantiNama = item },
+                    )
+                    // Dialog UBAH NAMA berkas (tombol Ubah di Rincian) —
+                    // ekstensi dipertahankan, yg diedit nama dasarnya saja.
+                    itemGantiNama?.let { target ->
+                        val ekstensi = target.name.substringAfterLast('.', "").let {
+                            if (it.isNotEmpty() && it.length <= 5) ".$it" else ""
+                        }
+                        var teksNama by remember(target.key) {
+                            mutableStateOf(target.name.removeSuffix(ekstensi))
+                        }
+                        AlertDialog(
+                            onDismissRequest = { itemGantiNama = null },
+                            title = { Text("Ubah nama berkas") },
+                            text = {
+                                OutlinedTextField(
+                                    value = teksNama,
+                                    onValueChange = { teksNama = it },
+                                    singleLine = true,
+                                    label = { Text("Nama berkas") },
+                                    suffix = if (ekstensi.isNotEmpty()) {
+                                        { Text(ekstensi) }
+                                    } else null,
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    val basis = teksNama.trim()
+                                    if (basis.isNotEmpty() &&
+                                        !basis.contains('/') && !basis.contains('\\')
+                                    ) {
+                                        onGantiNama(target, basis + ekstensi)
+                                        itemGantiNama = null
+                                    }
+                                }) { Text("Simpan") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { itemGantiNama = null }) {
+                                    Text("Batal")
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
         // Bar melayang bersama HANYA buat foto — video punya kontrol sendiri
-        // ala pemutar Samsung (di dalam VideoPage).
-        if (barsVisible && current?.isVideo != true) {
+        // ala pemutar Samsung (di dalam VideoPage). Muncul/hilangnya bar
+        // dianimasikan (perintah user: tap sekali -> bar hilang smooth).
+        if (!rincianTerbuka && (current?.isVideo != true || !videoPlayerPenuh)) {
             // Tombol kembali melayang bulat — persis screenshot Samsung asli user
+            AnimatedVisibility(
+                visible = barsVisible,
+                enter = fadeIn(tween(200)),
+                exit = fadeOut(tween(180)),
+                modifier = Modifier.align(Alignment.TopStart),
+            ) {
             Surface(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 6.dp,
                 modifier = Modifier
-                    .align(Alignment.TopStart)
                     .statusBarsPadding()
                     .padding(start = 14.dp, top = 10.dp),
             ) {
@@ -1479,17 +2069,26 @@ fun ViewerScreen(
                     )
                 }
             }
+            }
 
             // Pill bawah melayang, IKON SAJA — urutan Samsung:
             // Favorit · Ubah · Rincian · Berbagi · Hapus
             current?.let { item ->
+                AnimatedVisibility(
+                    visible = barsVisible,
+                    enter = fadeIn(tween(200)) +
+                        slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it / 2 },
+                    exit = fadeOut(tween(180)) +
+                        slideOutVertically(tween(240)) { it / 2 },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                ) {
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 8.dp,
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 30.dp),
+                        .navigationBarsPadding()
+                        .padding(bottom = 10.dp),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -1515,15 +2114,17 @@ fun ViewerScreen(
                                 },
                             )
                         }
-                        FastOption(
-                            icon = Icons.Filled.Refresh,
-                            label = "Putar",
-                            onClick = { rotasi += 90f },
-                        )
+                        if (!item.isVideo) {
+                            FastOption(
+                                icon = Icons.Filled.ScreenRotation,
+                                label = "Putar",
+                                onClick = { putarLayarVS() },
+                            )
+                        }
                         FastOption(
                             icon = Icons.Filled.Info,
                             label = "Rincian",
-                            onClick = { infoItem = item },
+                            onClick = { rincianTerbuka = true },
                         )
                         if (!item.isDrive) {
                             FastOption(
@@ -1539,28 +2140,9 @@ fun ViewerScreen(
                         )
                     }
                 }
+                }
             }
         }
     }
 
-    infoItem?.let { item ->
-        AlertDialog(
-            onDismissRequest = { infoItem = null },
-            title = { Text("Rincian") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Nama: ${item.name}")
-                    Text("Tanggal: ${formatTanggalSingkat(item.dateMillis)}")
-                    Text("Ukuran: ${formatUkuran(item.size)}")
-                    if (item.width > 0 && item.height > 0) Text("Dimensi: ${item.width} × ${item.height}")
-                    if (item.isVideo && item.durationMs > 0) Text("Durasi: ${formatDurasi(item.durationMs)}")
-                    Text("Jenis: ${item.mime.ifEmpty { "-" }}")
-                    Text(
-                        "Lokasi: " + if (item.isDrive) "Google Drive" else item.relativePath.ifEmpty { "-" }
-                    )
-                }
-            },
-            confirmButton = { TextButton(onClick = { infoItem = null }) { Text("Oke") } },
-        )
-    }
 }

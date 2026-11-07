@@ -391,6 +391,34 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
         }
     }
 
+    // ---- Izin PINDAH file (seret foto ke album): MediaStore minta izin
+    // tulis lewat RecoverableSecurityException yg disimpan VM ----
+    val izinPindahLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { hasil ->
+        vm.selesaikanPindahSetelahIzin(hasil.resultCode == android.app.Activity.RESULT_OK)
+    }
+    LaunchedEffect(vm.pindahPerluIzin) {
+        val p = vm.pindahPerluIzin ?: return@LaunchedEffect
+        runCatching {
+            izinPindahLauncher.launch(IntentSenderRequest.Builder(p.pendingIntent.intentSender).build())
+        }.onFailure { vm.selesaikanPindahSetelahIzin(false) }
+    }
+
+    // ---- Izin GANTI NAMA file (Rincian → Ubah): pola sama kayak izin
+    // pindah, state tertundanya di VM ----
+    val izinGantiNamaLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { hasil ->
+        vm.selesaikanGantiNamaSetelahIzin(hasil.resultCode == android.app.Activity.RESULT_OK)
+    }
+    LaunchedEffect(vm.gantiNamaPerluIzin) {
+        val g = vm.gantiNamaPerluIzin ?: return@LaunchedEffect
+        runCatching {
+            izinGantiNamaLauncher.launch(IntentSenderRequest.Builder(g.pendingIntent.intentSender).build())
+        }.onFailure { vm.selesaikanGantiNamaSetelahIzin(false) }
+    }
+
     // ---- Izin AUDIO terpisah (tab Audio): nolak audio TIDAK boleh
     // mengunci galeri foto/video, jadi launchernya sendiri. ----
     val izinAudioPerm = if (Build.VERSION.SDK_INT >= 33) {
@@ -670,6 +698,7 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                         audioPermLauncher.launch(daftar)
                     },
                     onOpenFolder = { screen = Screen.AudioFolder(it.id) },
+                    onOpenPlayer = { pemutarTerbuka = true },
                 )
             }
             is Screen.AudioFolder -> {
@@ -707,12 +736,13 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                     selection = selection,
                     selecting = selecting,
                     onBack = { screen = Screen.Albums },
-                    onItemClick = { onItemClick(s.album.items, it) },
+                    onItemClick = { items, item -> onItemClick(items, item) },
                     onItemLongClick = ::onItemLongClick,
                     onCloseSelecting = ::closeSelecting,
                     onShareSelected = { shareItems(context, selectedItems()) },
                     onDeleteSelected = { requestDelete(selectedItems()) },
                     onUploadSelected = { vm.uploadToDrive(selectedItems()) },
+                    onStartSelecting = { selecting = true },
                 )
             }
             is Screen.Viewer -> {
@@ -726,6 +756,7 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                     videoSedangDiLatar = vm.videoDiLatar != null,
                     onSerahkanVideo = { videos, mulai, pos -> vm.serahkanVideoKeLatar(videos, mulai, pos) },
                     onAmbilAlihVideo = { vm.ambilAlihDariLatar() },
+                    onGantiNama = { item, nama -> vm.gantiNama(item, nama) },
                 )
             }
         }

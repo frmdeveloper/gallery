@@ -1,14 +1,3 @@
-import java.util.Properties
-
-// Kredensial OAuth Drive dibaca dari local.properties (tidak pernah masuk repo).
-// Isi drive.clientId + drive.clientSecret di sana; lihat local.properties.example.
-val localProperties = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
-}
-fun localProp(name: String): String =
-    (localProperties.getProperty(name) ?: "").replace("\\", "\\\\").replace("\"", "\\\"")
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -23,21 +12,29 @@ android {
         applicationId = "id.frmdeveloper.gallery"
         minSdk = 30
         targetSdk = 36
-        versionCode = 58
-        versionName = "1.57"
-        buildConfigField("String", "DRIVE_CLIENT_ID", "\"${localProp("drive.clientId")}\"")
-        buildConfigField("String", "DRIVE_CLIENT_SECRET", "\"${localProp("drive.clientSecret")}\"")
-        buildConfigField("String", "DRIVE_WEB_CLIENT_ID", "\"${localProp(\"drive.webClientId\")}\"")
-        buildConfigField("String", "DRIVE_WEB_CLIENT_SECRET", "\"${localProp(\"drive.webClientSecret\")}\"")
+        versionCode = 80
+        versionName = "1.79"
     }
 
-    // TIDAK ADA kunci tanda tangan di repo ini. Build debug pakai kunci debug
-    // bawaan Android Studio; buat rilis, tambahkan signingConfig sendiri
-    // (keystore + password lewat local.properties) — jangan commit keystore.
+    // Kunci tanda tangan DIPIN ke file di dalam project (persisten di workspace).
+    // Riwayat: v1.0/v1.1 ke-sign kunci debug ephemeral yg hilang pas container
+    // restart -> v1.2 sempat beda sertifikat. Mulai sekarang SEMUA build pakai
+    // kunci ini (sertifikat 5dfd0e88...) biar update selalu bisa ditimpa.
+    signingConfigs {
+        create("galeri") {
+            storeFile = rootProject.file("signing/galeri-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("galeri")
         }
         release {
+            signingConfig = signingConfigs.getByName("galeri")
             // v1.6: RILIS beneran (R8 + shrink) — build DEBUG yg dikirim selama
             // ini jauh lebih lambat (Compose tanpa optimasi), tersangka utama
             // lag yg gak sembuh-sembuh dari v1.3-v1.5.
@@ -64,7 +61,6 @@ android {
     }
     buildFeatures {
         compose = true
-        buildConfig = true
     }
     packaging {
         resources {

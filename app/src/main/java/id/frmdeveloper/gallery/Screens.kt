@@ -1,6 +1,7 @@
 package id.frmdeveloper.gallery
 
 import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -22,7 +23,9 @@ import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.border
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -35,6 +38,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,8 +52,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -95,15 +102,21 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -136,6 +149,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
@@ -163,7 +177,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
@@ -171,7 +196,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import coil.size.Precision
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import coil.request.videoFrameMillis
+import android.provider.MediaStore
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import java.io.File
@@ -180,11 +207,25 @@ import java.net.URL
 import org.json.JSONObject
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.filled.Storage
+import android.content.ClipDescription
+import android.view.View
+import androidx.compose.foundation.draganddrop.dragAndDropSource
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.DragAndDropTransferData
+import androidx.compose.ui.draganddrop.mimeTypes
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.fillMaxHeight
 
 // ---------- Helper berbagi ----------
 
@@ -206,6 +247,31 @@ fun shareItems(context: Context, items: List<MediaItem>) {
     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     val clip = ClipData.newUri(context.contentResolver, "media", items.first().uri)
     items.drop(1).forEach { clip.addItem(ClipData.Item(it.uri)) }
+    intent.clipData = clip
+    context.startActivity(Intent.createChooser(intent, "Bagikan").apply {
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    })
+}
+
+/** Bagikan file audio LOKAL (lagu Drive tidak bisa dibagikan sebagai berkas). */
+fun shareLagu(context: Context, lagu: List<AudioItem>) {
+    val lokal = lagu.filter { it.akunDrive.isBlank() }
+    if (lokal.isEmpty()) return
+    val uris = ArrayList(lokal.map { it.uri })
+    val intent = if (uris.size == 1) {
+        Intent(Intent.ACTION_SEND).apply {
+            type = "audio/*"
+            putExtra(Intent.EXTRA_STREAM, uris.first())
+        }
+    } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "audio/*"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+        }
+    }
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    val clip = ClipData.newUri(context.contentResolver, "lagu", uris.first())
+    uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
     intent.clipData = clip
     context.startActivity(Intent.createChooser(intent, "Bagikan").apply {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -366,6 +432,8 @@ fun MediaGrid(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     kunciPosisi: String = "grid",
+    tanpaTanggal: Boolean = false,
+    onMulaiSeret: (List<MediaItem>) -> Unit = {},
 ) {
     val context = LocalContext.current
     // Grouping ribuan item DIBANGUN DI BACKGROUND (Dispatchers.Default), bukan
@@ -373,8 +441,11 @@ fun MediaGrid(
     // berubah (sumber lag parah v1.3 pas Drive ikut kegabung). Entries lama
     // dipertahankan selama yg baru dibangun, jadi grid gak kedip kosong.
     var entries by remember { mutableStateOf<List<GridEntry>>(emptyList()) }
-    LaunchedEffect(items, level) {
+    LaunchedEffect(items, level, tanpaTanggal) {
         val dibangun = withContext(Dispatchers.Default) {
+            // Di dalam album: TANPA header tanggal, semua foto campur rata
+            // dalam satu grid (perintah user)
+            if (tanpaTanggal) return@withContext items.map { GridEntry.Cell(it) }
             val groups: Map<String, List<MediaItem>> = when (level) {
                 3 -> items.groupBy { formatBulan(it.dateMillis) }
                 4 -> items.groupBy { formatTahun(it.dateMillis) }
@@ -458,6 +529,98 @@ fun MediaGrid(
                 is GridEntry.Cell -> {
                     val item = entry.item
                     val terpilih = item.key in selection
+                    // Model seret SESUAI video referensi user (2026-11-06):
+                    // tekan-tahan = MASUK mode pilih; di dalam mode pilih,
+                    // tekan-tahan+geser foto YG TERPILIH = menyeret SEMUA yg
+                    // terpilih (ke album panel / keluar ke aplikasi lain).
+                    // Di luar mode pilih TIDAK ada seretan langsung.
+                    val modInteraksi = when {
+                        selecting && terpilih -> Modifier
+                            // Detektor seret CUSTOM (scope overload): detektor
+                            // bawaan (tap-gesture long-press) KALAH balapan
+                            // lawan scroll LazyGrid di HP user — seretan tidak
+                            // pernah mulai (v1.61-v1.64). Di sini: tahan diam
+                            // 450ms ATAU geser melewati touch slop setelah
+                            // menekan >=120ms = mulai seret; perubahan disentuh
+                            // (consume) SEBELUM scroll grid (leluhur) sempat
+                            // mulai. Gerakan melewati slop <120ms = scroll.
+                            .dragAndDropSource(
+                                drawDragDecoration = {
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.92f),
+                                        cornerRadius = CornerRadius(10.dp.toPx()),
+                                    )
+                                    drawRoundRect(
+                                        color = Color(0xFF0381FE),
+                                        cornerRadius = CornerRadius(10.dp.toPx()),
+                                        style = Stroke(width = 2.dp.toPx()),
+                                    )
+                                },
+                                block = {
+                                    val slopPx = viewConfiguration.touchSlop
+                                    while (true) {
+                                        awaitPointerEventScope {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            var berubah = down
+                                            var mulaiSeret = false
+                                            while (true) {
+                                                val sisaMs = 450L - (berubah.uptimeMillis - down.uptimeMillis)
+                                                val event = if (sisaMs > 0L) {
+                                                    withTimeoutOrNull(sisaMs) { awaitPointerEvent() }
+                                                } else {
+                                                    null
+                                                }
+                                                if (event == null) {
+                                                    if (berubah.pressed) mulaiSeret = true
+                                                    break
+                                                }
+                                                val ch = event.changes.firstOrNull { it.id == down.id }
+                                                    ?: break
+                                                berubah = ch
+                                                if (!ch.pressed) break
+                                                val jarak = (ch.position - down.position).getDistance()
+                                                if (jarak > slopPx) {
+                                                    if (ch.uptimeMillis - down.uptimeMillis >= 120L) {
+                                                        ch.consume()
+                                                        mulaiSeret = true
+                                                    }
+                                                    break
+                                                }
+                                            }
+                                            if (mulaiSeret) {
+                                                val daftar = items.filter { it.key in selection }
+                                                    .ifEmpty { listOf(item) }
+                                                onMulaiSeret(daftar)
+                                                val clip = ClipData(
+                                                    ClipDescription(
+                                                        "Galeri FRM",
+                                                        daftar.map { it.mime }.distinct().toTypedArray(),
+                                                    ),
+                                                    ClipData.Item(daftar.first().uri),
+                                                )
+                                                daftar.drop(1).forEach {
+                                                    clip.addItem(ClipData.Item(it.uri))
+                                                }
+                                                startTransfer(
+                                                    DragAndDropTransferData(
+                                                        clipData = clip,
+                                                        localState = daftar.joinToString(",") { it.key },
+                                                        flags = View.DRAG_FLAG_GLOBAL or
+                                                            View.DRAG_FLAG_GLOBAL_URI_READ,
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                            .clickable { onItemClick(item) }
+                        selecting -> Modifier.clickable { onItemClick(item) }
+                        else -> Modifier.combinedClickable(
+                            onClick = { onItemClick(item) },
+                            onLongClick = { onItemLongClick(item) },
+                        )
+                    }
                     Box(
                         modifier = (if (level >= 3) Modifier else Modifier.animateItem(placementSpec = spring(dampingRatio = 0.9f, stiffness = 300f)))
                             .aspectRatio(1f)
@@ -465,10 +628,7 @@ fun MediaGrid(
                                 if (level >= 3) Modifier
                                 else Modifier.background(MaterialTheme.colorScheme.background)
                             )
-                            .combinedClickable(
-                                onClick = { onItemClick(item) },
-                                onLongClick = { onItemLongClick(item) },
-                            )
+                            .then(modInteraksi)
                     ) {
                         // MODE LITE (level >= 3, thumbnail kecil): di tingkat ini
                         // ratusan sel tampil sekaligus. Decode FRAME VIDEO per sel
@@ -544,31 +704,252 @@ fun MediaGrid(
     }
 }
 
-// ---------- Bar atas mode seleksi ----------
+// ---------- Krom mode pilih MENGAMBANG (ala screenshot Galeri Samsung) ----------
+// Diukur dari screenshot user 2026-11-07: pil jumlah (kiri atas) + pil
+// "Batal" (kanan atas) melayang; bar pil bawah (Buat/Berbagi/Hapus/Lainnya)
+// lebar rapat di tengah; "Lainnya" membuka KARTU menu mengambang (sudut
+// 28dp) tepat di atas bar, item 15sp, grup kedua dipisah garis titik-titik.
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SelectionTopBar(
+private fun ItemBarPilih(ikon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(56.dp)
+            .clickable(onClick = onClick)
+            .padding(vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(ikon, label, tint = Color(0xFF191919), modifier = Modifier.size(21.dp))
+        Text(label, fontSize = 10.sp, color = Color(0xFF191919))
+    }
+}
+
+@Composable
+private fun ItemMenuLainnya(teks: String, onClick: () -> Unit) {
+    Text(
+        teks, fontSize = 15.sp, color = Color(0xFF191919),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 11.dp),
+    )
+}
+
+/** Garis titik-titik pemisah grup di kartu menu Lainnya. */
+@Composable
+private fun GarisTitikMenu() {
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .height(2.dp),
+    ) {
+        val langkah = 8.dp.toPx()
+        var x = 0f
+        while (x < size.width) {
+            drawCircle(Color(0xFFBDBDBD), radius = 1.2.dp.toPx(), center = Offset(x, size.height / 2))
+            x += langkah
+        }
+    }
+}
+
+@Composable
+fun KromPilihMengambang(
+    tampak: Boolean,
     count: Int,
     driveConnected: Boolean,
     onClose: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onUpload: () -> Unit,
+    onBuatAlbum: () -> Unit,
+    onSalinClipboard: () -> Unit,
+    onSalinKeAlbum: () -> Unit,
+    onPindahKeAlbum: () -> Unit,
+    onFavorit: () -> Unit,
 ) {
-    TopAppBar(
-        title = { Text("$count dipilih") },
-        navigationIcon = {
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Tutup mode pilih") }
-        },
-        actions = {
-            IconButton(onClick = onShare) { Icon(Icons.Filled.Share, "Bagikan") }
-            if (driveConnected) {
-                IconButton(onClick = onUpload) { Icon(Icons.Filled.CloudUpload, "Upload ke Drive") }
+    var menuLainnya by remember { mutableStateOf(false) }
+    LaunchedEffect(tampak) { if (!tampak) menuLainnya = false }
+    Box(Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = tampak,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter = fadeIn(tween(220)) +
+                slideInVertically(tween(300, easing = FastOutSlowInEasing)) { -it / 2 },
+            exit = fadeOut(tween(180)) +
+                slideOutVertically(tween(240)) { -it / 2 },
+        ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                Modifier
+                    .height(40.dp)
+                    .shadow(4.dp, CircleShape)
+                    .background(Color.White, CircleShape)
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Outlined.Circle, null, tint = Color(0xFF191919),
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "$count", fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    color = Color(0xFF191919),
+                )
             }
-            IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, "Hapus") }
-        },
-    )
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier
+                    .height(40.dp)
+                    .shadow(4.dp, CircleShape)
+                    .background(Color.White, CircleShape)
+                    .clickable(onClick = onClose)
+                    .padding(horizontal = 18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Batal", fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                    color = Color(0xFF191919),
+                )
+            }
+        }
+        }
+        AnimatedVisibility(
+            visible = menuLainnya,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(180)),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { menuLainnya = false },
+            )
+        }
+        AnimatedVisibility(
+            visible = menuLainnya,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(tween(200)) +
+                slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it },
+            exit = fadeOut(tween(160)) +
+                slideOutVertically(tween(260)) { it },
+        ) {
+            Column(
+                Modifier
+                    .navigationBarsPadding()
+                    .padding(bottom = 80.dp)
+                    .fillMaxWidth(0.8f)
+                    .widthIn(max = 340.dp)
+                    .shadow(12.dp, RoundedCornerShape(28.dp))
+                    .background(Color.White, RoundedCornerShape(28.dp))
+                    .padding(vertical = 10.dp),
+            ) {
+                ItemMenuLainnya("Salin ke clipboard") { menuLainnya = false; onSalinClipboard() }
+                ItemMenuLainnya("Salin ke album") { menuLainnya = false; onSalinKeAlbum() }
+                ItemMenuLainnya("Pindahkan ke album") { menuLainnya = false; onPindahKeAlbum() }
+                ItemMenuLainnya("Tambah ke favorit") { menuLainnya = false; onFavorit() }
+                if (driveConnected) {
+                    GarisTitikMenu()
+                    ItemMenuLainnya("Upload ke Drive") { menuLainnya = false; onUpload() }
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = tampak,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(tween(220)) +
+                slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it },
+            exit = fadeOut(tween(180)) +
+                slideOutVertically(tween(240)) { it },
+        ) {
+        Row(
+            Modifier
+                .navigationBarsPadding()
+                .padding(bottom = 12.dp)
+                .shadow(8.dp, CircleShape)
+                .background(Color.White, CircleShape)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ItemBarPilih(Icons.Filled.AddPhotoAlternate, "Buat") { onBuatAlbum() }
+            ItemBarPilih(Icons.Filled.Share, "Berbagi") { onShare() }
+            ItemBarPilih(Icons.Filled.Delete, "Hapus") { onDelete() }
+            ItemBarPilih(Icons.Filled.MoreVert, "Lainnya") { menuLainnya = !menuLainnya }
+        }
+        }
+    }
+}
+
+/** Salin URI item terpilih ke clipboard sistem (buat ditempel di aplikasi lain). */
+private fun salinKeClipboard(vm: GalleryViewModel, ctx: Context, pilihan: List<MediaItem>) {
+    if (pilihan.isEmpty()) return
+    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newUri(ctx.contentResolver, "Galeri FRM", pilihan.first().uri)
+    pilihan.drop(1).forEach { clip.addItem(ClipData.Item(it.uri)) }
+    cm.setPrimaryClip(clip)
+    vm.beriTahu("${pilihan.size} disalin ke clipboard")
+}
+
+/** Sheet pemilih album tujuan (buat Salin/Pindahkan dari menu Lainnya). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PemilihAlbumSheet(
+    albums: List<Album>,
+    judul: String,
+    onPilih: (Album) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            judul, fontWeight = FontWeight.Bold, fontSize = 16.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        LazyColumn(Modifier.fillMaxWidth()) {
+            items(albums, key = { it.id }) { album ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onPilih(album) }
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    ) {
+                        album.cover?.let { sampul ->
+                            AsyncImage(
+                                model = if (sampul.thumbUrl.isNotBlank()) sampul.thumbUrl else sampul.uri,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            album.name, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        Text("${album.count}", fontSize = 12.sp, color = WarnaSubMenu)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+    }
 }
 
 // ---------- Layar Gambar (timeline) ----------
@@ -597,25 +978,55 @@ fun TimelineScreen(
         searching = false
         query = ""
     }
+    // Panel album: state dideklarasikan di bawah (panelTerbuka/albumTerpilihId)
+    // — handler ini membaca state itu lewat referensi komposisi yg sama.
     var menuOpen by remember { mutableStateOf(false) }
     // Timeline = lokal + Drive digabung, urut tanggal terbaru (kayak Galeri Samsung)
     val items = remember(vm.media, vm.driveItems, query) {
         val gabung = (vm.media + vm.driveItems).sortedByDescending { it.dateMillis }
         if (query.isBlank()) gabung else gabung.filter { it.name.contains(query, ignoreCase = true) }
     }
+    // === Panel album (usap kanan / pas nyeret foto): split ala screenshot
+    // user — album di kiri, grid foto di kanan ===
+    var panelTerbuka by rememberSaveable { mutableStateOf(false) }
+    var albumTerpilihId by rememberSaveable { mutableStateOf<String?>(null) }
+    androidx.activity.compose.BackHandler(
+        enabled = !searching && (albumTerpilihId != null || panelTerbuka),
+    ) {
+        if (albumTerpilihId != null) albumTerpilihId = null else panelTerbuka = false
+    }
+    val daftarAlbumPanel = remember(vm.localAlbums, vm.driveAlbums, vm.favorites, vm.media, vm.driveItems) {
+        buildList {
+            val fav = vm.favoritesAlbum()
+            if (fav.count > 0) add(fav)
+            addAll(vm.driveAlbums)
+            addAll(vm.localAlbums)
+        }.map { it.denganIkon(ctxUi) }
+    }
+    val albumTerpilih = daftarAlbumPanel.firstOrNull { it.id == albumTerpilihId }
+    val tampilGrid = remember(items, albumTerpilih, vm.media, vm.driveItems, vm.favorites, query) {
+        val a = albumTerpilih ?: return@remember items
+        val dasar = when (a.kind) {
+            AlbumKind.LOCAL -> vm.media.filter { "local:${it.bucketId}" == a.id }
+            AlbumKind.DRIVE -> vm.driveItems.filter { item -> a.items.any { d -> d.key == item.key } }
+            AlbumKind.FAVORITES -> (vm.media + vm.driveItems).filter { it.key in vm.favorites }
+        }.ifEmpty { a.items }.sortedByDescending { it.dateMillis }
+        if (query.isBlank()) dasar else dasar.filter { it.name.contains(query, ignoreCase = true) }
+    }
+    // === Mode pilih: krom mengambang + sheet album + dialog album baru ===
+    val pilihanKini = remember(items, selection) { items.filter { it.key in selection } }
+    var modeAlbumSheet by remember { mutableStateOf<String?>(null) }
+    var buatAlbumTerbuka by remember { mutableStateOf(false) }
+    var namaAlbumBaru by remember { mutableStateOf("") }
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        if (selecting) {
-            SelectionTopBar(
-                count = selection.size,
-                driveConnected = vm.driveApiOn || vm.driveTreeUri != null,
-                onClose = onCloseSelecting,
-                onShare = onShareSelected,
-                onDelete = onDeleteSelected,
-                onUpload = onUploadSelected,
-            )
-        } else {
             TopAppBar(
-                title = { Text("Gambar", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        albumTerpilih?.name ?: "Gambar", fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 actions = {
                     IconButton(onClick = { searching = !searching }) { Icon(Icons.Filled.Search, "Cari") }
                     Box {
@@ -627,6 +1038,11 @@ fun TimelineScreen(
                                 onClick = { menuOpen = false; onStartSelecting() },
                             )
                             DropdownMenuItem(
+                                text = { Text(if (panelTerbuka) "Sembunyikan album" else "Tampilkan album") },
+                                leadingIcon = { Icon(Icons.Filled.PhotoLibrary, null) },
+                                onClick = { menuOpen = false; panelTerbuka = !panelTerbuka },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Segarkan") },
                                 leadingIcon = { Icon(Icons.Filled.Refresh, null) },
                                 onClick = { menuOpen = false; vm.reloadLocal() },
@@ -635,8 +1051,11 @@ fun TimelineScreen(
                     }
                 },
             )
-        }
-        if (searching) {
+        AnimatedVisibility(
+            visible = searching,
+            enter = expandVertically(tween(240)) + fadeIn(tween(240)),
+            exit = shrinkVertically(tween(240)) + fadeOut(tween(180)),
+        ) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -645,26 +1064,382 @@ fun TimelineScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
-        if (vm.loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        } else if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Tidak ada foto atau video", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Lebar panel DIANIMASIKAN (weight 0 -> 0,196): rel meluncur halus
+        // masuk/keluar dan grid bergeser mengikuti, bukan muncul mendadak.
+        val lebarPanel by animateFloatAsState(
+            targetValue = if (panelTerbuka) 0.196f else 0f,
+            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+            label = "lebarPanel",
+        )
+        val wPanel = lebarPanel.coerceIn(0.002f, 0.196f)
+        Row(Modifier.fillMaxSize()) {
+            if (panelTerbuka || lebarPanel > 0.002f) {
+                PanelAlbum(
+                    vm = vm,
+                    albums = daftarAlbumPanel,
+                    terpilihId = albumTerpilihId,
+                    totalFoto = vm.media.size + vm.driveItems.size,
+                    onPilih = { albumTerpilihId = it },
+                    onGeserTutup = { panelTerbuka = false },
+                    onSetelahDrop = onCloseSelecting,
+                    modifier = Modifier.weight(wPanel),
+                )
             }
-        } else {
-            MediaGrid(
-                kunciPosisi = "timeline",
-                items = items,
-                level = level,
-                onLevelChange = { level = it },
-                selection = selection,
-                selecting = selecting,
-                isFavorite = { vm.isFavorite(it) },
-                onItemClick = onItemClick,
-                onItemLongClick = onItemLongClick,
-                contentPadding = PaddingValues(bottom = 96.dp),
+            Box(
+                Modifier
+                    .weight(1f - wPanel)
+                    .fillMaxHeight()
+                    .pointerInput(panelTerbuka) {
+                        // Usap ke kanan dari area grid MANA PUN = buka panel
+                        // album (v1.61 cuma strip 22dp di tepi — terlalu
+                        // sempit, dari tengah layar tidak pernah kepicu).
+                        // Grid vertikal tidak memakai geser horizontal, jadi
+                        // detektor ini tidak merebut scroll atas-bawah.
+                        var total = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { total = 0f },
+                            onDragEnd = {
+                                if (total > 90f && !panelTerbuka) panelTerbuka = true
+                                else if (total < -90f && panelTerbuka) panelTerbuka = false
+                            },
+                            onHorizontalDrag = { _, jumlah -> total += jumlah },
+                        )
+                    },
+            ) {
+                when {
+                    vm.loading -> Box(
+                        Modifier.fillMaxSize(), contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator() }
+                    tampilGrid.isEmpty() -> Box(
+                        Modifier.fillMaxSize(), contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (albumTerpilih == null) "Tidak ada foto atau video" else "Album kosong",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    else -> MediaGrid(
+                        kunciPosisi = if (albumTerpilih == null) "timeline" else "panel_" + albumTerpilih.id,
+                        tanpaTanggal = albumTerpilih != null,
+                        onMulaiSeret = { panelTerbuka = true },
+                        items = tampilGrid,
+                        level = level,
+                        onLevelChange = { level = it },
+                        selection = selection,
+                        selecting = selecting,
+                        isFavorite = { vm.isFavorite(it) },
+                        onItemClick = onItemClick,
+                        onItemLongClick = onItemLongClick,
+                        contentPadding = PaddingValues(bottom = 96.dp),
+                    )
+                }
+                // Tombol bulet kembali melayang (ala screenshot) pas panel
+                // kebuka / lagi di dalam album panel
+                TombolBuletKembali(
+                    tampak = panelTerbuka || albumTerpilih != null,
+                    onClick = {
+                        if (albumTerpilihId != null) albumTerpilihId = null
+                        else panelTerbuka = false
+                    },
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+            }
+        }
+    }
+    KromPilihMengambang(
+        tampak = selecting,
+        count = selection.size,
+            driveConnected = vm.driveApiOn || vm.driveTreeUri != null,
+            onClose = onCloseSelecting,
+            onShare = onShareSelected,
+            onDelete = onDeleteSelected,
+            onUpload = onUploadSelected,
+            onBuatAlbum = { namaAlbumBaru = ""; buatAlbumTerbuka = true },
+            onSalinClipboard = { salinKeClipboard(vm, ctxUi, pilihanKini) },
+            onSalinKeAlbum = { modeAlbumSheet = "salin" },
+            onPindahKeAlbum = { modeAlbumSheet = "pindah" },
+            onFavorit = {
+                var n = 0
+                for (pil in pilihanKini) if (!vm.isFavorite(pil)) { vm.toggleFavorite(pil); n++ }
+                vm.beriTahu(if (n == 0) "Sudah di Favorit semua" else "$n ditambah ke Favorit")
+                onCloseSelecting()
+            },
+    )
+    if (modeAlbumSheet != null) {
+        PemilihAlbumSheet(
+            albums = daftarAlbumPanel,
+            judul = if (modeAlbumSheet == "salin") "Salin ke album" else "Pindahkan ke album",
+            onPilih = { album ->
+                if (modeAlbumSheet == "salin") vm.salinBanyakKeAlbum(pilihanKini, album)
+                else vm.pindahBanyakKeAlbum(pilihanKini, album)
+                modeAlbumSheet = null
+                onCloseSelecting()
+            },
+            onDismiss = { modeAlbumSheet = null },
+        )
+    }
+    if (buatAlbumTerbuka) {
+        AlertDialog(
+            onDismissRequest = { buatAlbumTerbuka = false },
+            title = { Text("Album baru") },
+            text = {
+                OutlinedTextField(
+                    value = namaAlbumBaru,
+                    onValueChange = { namaAlbumBaru = it },
+                    label = { Text("Nama album") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        buatAlbumTerbuka = false
+                        vm.pindahKeFolderBaru(pilihanKini, namaAlbumBaru)
+                        onCloseSelecting()
+                    },
+                    enabled = namaAlbumBaru.isNotBlank(),
+                ) { Text("Buat") }
+            },
+            dismissButton = {
+                TextButton(onClick = { buatAlbumTerbuka = false }) { Text("Batal") }
+            },
+        )
+    }
+    }
+}
+
+/** Tombol bulet kembali melayang di atas grid (panel kebuka / lagi di album panel). */
+@Composable
+private fun TombolBuletKembali(tampak: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible = tampak,
+        modifier = modifier,
+        enter = fadeIn(tween(200)) +
+            scaleIn(tween(280, easing = FastOutSlowInEasing), initialScale = 0.6f),
+        exit = fadeOut(tween(150)) + scaleOut(tween(200), targetScale = 0.6f),
+    ) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .padding(12.dp)
+                .size(42.dp)
+                .shadow(3.dp, CircleShape)
+                .background(Color.White, CircleShape),
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack, "Kembali",
+                tint = Color.Black,
             )
         }
+    }
+}
+
+/**
+ * Panel album meluncur dari kiri (split ala screenshot user, DIUKUR dari
+ * screenshot-nya): lebar 19,6% layar; tiap album = kartu vertikal (cover
+ * 50dp sudut 8dp, nama 13sp di bawahnya, jumlah 11sp abu); album terpilih
+ * berbingkai biru di cover-nya; latar putih polos.
+ */
+@Composable
+private fun PanelAlbum(
+    vm: GalleryViewModel,
+    albums: List<Album>,
+    terpilihId: String?,
+    totalFoto: Int,
+    tampilSemuaFoto: Boolean = true,
+    onPilih: (String?) -> Unit,
+    onGeserTutup: () -> Unit,
+    onSetelahDrop: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    // Lebar rel TETAP 19,6% layar; yg dianimasikan pemanggil adalah lebar
+    // WADAH LUAR (weight) — isi rel tidak ikut menyempit, cuma makin
+    // terlihat/tertutup lewat clipToBounds = meluncur halus ala referensi.
+    val lebarRel = (LocalConfiguration.current.screenWidthDp * 0.196f).dp
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clipToBounds()
+            .pointerInput(Unit) {
+                var total = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { total = 0f },
+                    onDragEnd = { if (total < -70f) onGeserTutup() },
+                    onHorizontalDrag = { _, jumlah -> total += jumlah },
+                )
+            },
+    ) {
+        Column(
+            Modifier
+                .width(lebarRel)
+                .fillMaxHeight()
+                .background(Color.White),
+        ) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 6.dp),
+            ) {
+                if (tampilSemuaFoto) {
+                    item {
+                        BarisSemuaFotoPanel(
+                            totalFoto = totalFoto,
+                            terpilih = terpilihId == null,
+                        ) { onPilih(null) }
+                    }
+                }
+                items(albums, key = { it.id }) { album ->
+                    BarisAlbumPanel(vm, album, terpilih = album.id == terpilihId, onSetelahDrop = onSetelahDrop) {
+                        onPilih(album.id)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BarisSemuaFotoPanel(totalFoto: Int, terpilih: Boolean, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .then(
+                    if (terpilih) {
+                        Modifier.border(2.dp, Color(0xFF0381FE), RoundedCornerShape(8.dp))
+                    } else {
+                        Modifier
+                    }
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.PhotoLibrary, "Semua foto",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            "Semua foto", fontSize = 13.sp, fontWeight = FontWeight.Medium,
+            color = WarnaTeksMenu, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 2.dp, top = 3.dp),
+        )
+        Text(
+            "$totalFoto", fontSize = 11.sp, color = WarnaSubMenu,
+            modifier = Modifier.padding(start = 2.dp),
+        )
+    }
+}
+
+/** Satu kartu album di panel — juga TARGET DROP seretan foto. */
+@Composable
+private fun BarisAlbumPanel(
+    vm: GalleryViewModel,
+    album: Album,
+    terpilih: Boolean,
+    onSetelahDrop: () -> Unit = {},
+    onClick: () -> Unit,
+) {
+    val sorotState = remember { mutableStateOf(false) }
+    val disorot = sorotState.value
+    val targetDrop = remember(album) {
+        object : DragAndDropTarget {
+            override fun onEntered(event: DragAndDropEvent) {
+                sorotState.value = true
+            }
+
+            override fun onExited(event: DragAndDropEvent) {
+                sorotState.value = false
+            }
+
+            override fun onEnded(event: DragAndDropEvent) {
+                sorotState.value = false
+            }
+
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                sorotState.value = false
+                val dragEvent = event.toAndroidDragEvent()
+                val pool = vm.media + vm.driveItems
+                // Seretan dari grid membawa SEMUA kunci yg terpilih (dipisah
+                // koma) di localState; fallback: cocokkan URI di ClipData.
+                val dariKunci = (dragEvent.localState as? String)
+                    ?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                    ?.mapNotNull { k -> pool.firstOrNull { it.key == k } }
+                    .orEmpty()
+                val daftar = if (dariKunci.isNotEmpty()) dariKunci else {
+                    val cd = dragEvent.clipData ?: return false
+                    (0 until cd.itemCount).mapNotNull { i ->
+                        cd.getItemAt(i).uri?.toString()?.let { u ->
+                            pool.firstOrNull { it.key == u || it.uri.toString() == u }
+                        }
+                    }
+                }
+                if (daftar.isEmpty()) return false
+                vm.pindahBanyakKeAlbum(daftar, album)
+                onSetelahDrop()
+                return true
+            }
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (disorot) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                else Color.Transparent
+            )
+            .dragAndDropTarget(
+                shouldStartDragAndDrop = { e ->
+                    e.mimeTypes().any { it.startsWith("image/") || it.startsWith("video/") }
+                },
+                target = targetDrop,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .then(
+                    when {
+                        disorot -> Modifier.border(
+                            2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)
+                        )
+                        terpilih -> Modifier.border(
+                            2.dp, Color(0xFF0381FE), RoundedCornerShape(8.dp)
+                        )
+                        else -> Modifier
+                    }
+                ),
+        ) {
+            val sampul = album.cover
+            if (sampul != null) {
+                AsyncImage(
+                    model = if (sampul.thumbUrl.isNotBlank()) sampul.thumbUrl else sampul.uri,
+                    contentDescription = album.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Text(
+            album.name, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+            color = WarnaTeksMenu, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 2.dp, top = 3.dp),
+        )
+        Text(
+            "${album.count}", fontSize = 11.sp, color = WarnaSubMenu,
+            modifier = Modifier.padding(start = 2.dp),
+        )
     }
 }
 
@@ -690,9 +1465,12 @@ fun AlbumsScreen(
     }
     var mencari by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    // Default urutan album = Nama A–Z (perintah user); kunci saveable
-    // diganti biar simpanan lama ("Urutan bawaan") nggak menang
-    var urutan by rememberSaveable(key = "urutan_album_v2") { mutableIntStateOf(1) }
+    // Default urutan album = Nama A–Z (perintah user). Simpanan pakai
+    // UiStore (SharedPreferences) — rememberSaveable terbukti TIDAK awet di
+    // HP user (sort balik ke A-Z sendiri pas pindah layar; pola sama kayak
+    // bug scroll v1.38), UiStore awet (dipakai zoom/kolom/urutan kustom).
+    var urutan by remember { mutableIntStateOf(UiStore.loadInt(ctx, "urutan_album_v2", 1)) }
+    LaunchedEffect(urutan) { UiStore.saveInt(ctx, "urutan_album_v2", urutan) }
     var menuOpen by remember { mutableStateOf(false) }
     // Urutan KUSTOM (urutan == 4): id album sesuai susunan user (seret)
     var urutanKustom by remember {
@@ -721,7 +1499,7 @@ fun AlbumsScreen(
                 val petaKustom = urutanKustom.withIndex().associate { (i, id) -> id to i }
                 saring.sortedBy { petaKustom[it.id] ?: Int.MAX_VALUE }
             }
-            else -> saring
+            else -> saring.sortedBy { it.name.lowercase() }
         }
     }
 
@@ -886,10 +1664,6 @@ fun AlbumsScreen(
                             onClick = { menuOpen = false; modeDaftar = !modeDaftar },
                         )
                         DropdownMenuItem(
-                            text = { Text((if (urutan == 0) "✓ " else "") + "Urutan bawaan") },
-                            onClick = { menuOpen = false; urutan = 0 },
-                        )
-                        DropdownMenuItem(
                             text = { Text((if (urutan == 1) "✓ " else "") + "Nama A–Z") },
                             onClick = { menuOpen = false; urutan = 1 },
                         )
@@ -1035,64 +1809,206 @@ fun AlbumDetailScreen(
     selection: Set<String>,
     selecting: Boolean,
     onBack: () -> Unit,
-    onItemClick: (MediaItem) -> Unit,
+    onItemClick: (List<MediaItem>, MediaItem) -> Unit,
     onItemLongClick: (MediaItem) -> Unit,
     onCloseSelecting: () -> Unit,
     onShareSelected: () -> Unit,
     onDeleteSelected: () -> Unit,
     onUploadSelected: () -> Unit,
+    onStartSelecting: () -> Unit = {},
 ) {
     val ctxUiDetail = LocalContext.current
     var level by rememberSaveable { mutableIntStateOf(UiStore.loadInt(ctxUiDetail, "zoom_album_detail", 1)) }
     LaunchedEffect(level) { UiStore.saveInt(ctxUiDetail, "zoom_album_detail", level) }
+    // === Panel album juga ada DI DALAM album (perintah user): usap kanan /
+    // menu / mulai nyeret foto membukanya; ketuk album lain = pindah isi ===
+    var panelTerbuka by rememberSaveable { mutableStateOf(false) }
+    var albumTerpilihId by remember(album.id) { mutableStateOf(album.id) }
+    var menuDetailOpen by remember { mutableStateOf(false) }
+    val daftarAlbumDetail = remember(vm.localAlbums, vm.driveAlbums, vm.favorites, vm.media, vm.driveItems) {
+        buildList {
+            val fav = vm.favoritesAlbum()
+            if (fav.count > 0) add(fav)
+            addAll(vm.driveAlbums)
+            addAll(vm.localAlbums)
+        }.map { it.denganIkon(ctxUiDetail) }
+    }
+    val albumAktif = daftarAlbumDetail.firstOrNull { it.id == albumTerpilihId } ?: album
+    // TIDAK ada BackHandler lokal di sini (perintah user 2026-11-07):
+    // tombol Kembali di dalam album LANGSUNG keluar album (handler induk di
+    // MainActivity), BUKAN menutup panel / mengembalikan album panel dulu.
     // Item album dihitung ulang dari sumber terbaru (lokal / drive / favorit)
-    val freshItems = remember(album.id, vm.media, vm.driveItems, vm.favorites) {
-        when (album.kind) {
-            AlbumKind.LOCAL -> vm.media.filter { "local:${it.bucketId}" == album.id }
+    val freshItems = remember(albumAktif.id, vm.media, vm.driveItems, vm.favorites) {
+        when (albumAktif.kind) {
+            AlbumKind.LOCAL -> vm.media.filter { "local:${it.bucketId}" == albumAktif.id }
             AlbumKind.DRIVE -> vm.driveItems.filter { item ->
-                vm.driveAlbums.any { it.id == album.id && it.items.any { d -> d.key == item.key } }
+                vm.driveAlbums.any { it.id == albumAktif.id && it.items.any { d -> d.key == item.key } }
             }
             AlbumKind.FAVORITES -> (vm.media + vm.driveItems).filter { it.key in vm.favorites }
-        }.ifEmpty { album.items }
+        }.ifEmpty { albumAktif.items }
     }
+    // === Mode pilih: krom mengambang + sheet album + dialog album baru ===
+    val pilihanKini = remember(freshItems, selection) { freshItems.filter { it.key in selection } }
+    var modeAlbumSheet by remember { mutableStateOf<String?>(null) }
+    var buatAlbumTerbuka by remember { mutableStateOf(false) }
+    var namaAlbumBaru by remember { mutableStateOf("") }
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        if (selecting) {
-            SelectionTopBar(
-                count = selection.size,
-                driveConnected = vm.driveApiOn || vm.driveTreeUri != null,
-                onClose = onCloseSelecting,
-                onShare = onShareSelected,
-                onDelete = onDeleteSelected,
-                onUpload = onUploadSelected,
-            )
-        } else {
             TopAppBar(
-                title = { Text(album.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = { Text(albumAktif.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.Close, "Kembali")
                     }
                 },
+                actions = {
+                    Box {
+                        IconButton(onClick = { menuDetailOpen = true }) {
+                            Icon(Icons.Filled.MoreVert, "Lainnya")
+                        }
+                        DropdownMenu(expanded = menuDetailOpen, onDismissRequest = { menuDetailOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Pilih item") },
+                                leadingIcon = { Icon(Icons.Filled.SelectAll, null) },
+                                onClick = { menuDetailOpen = false; onStartSelecting() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (panelTerbuka) "Sembunyikan album" else "Tampilkan album") },
+                                leadingIcon = { Icon(Icons.Filled.PhotoLibrary, null) },
+                                onClick = { menuDetailOpen = false; panelTerbuka = !panelTerbuka },
+                            )
+                        }
+                    }
+                },
             )
-        }
-        if (freshItems.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Album kosong", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Lebar panel DIANIMASIKAN (weight 0 -> 0,196): rel meluncur halus
+        // masuk/keluar dan grid bergeser mengikuti, bukan muncul mendadak.
+        val lebarPanel by animateFloatAsState(
+            targetValue = if (panelTerbuka) 0.196f else 0f,
+            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+            label = "lebarPanel",
+        )
+        val wPanel = lebarPanel.coerceIn(0.002f, 0.196f)
+        Row(Modifier.fillMaxSize()) {
+            if (panelTerbuka || lebarPanel > 0.002f) {
+                PanelAlbum(
+                    vm = vm,
+                    albums = daftarAlbumDetail,
+                    terpilihId = albumAktif.id,
+                    totalFoto = vm.media.size + vm.driveItems.size,
+                    tampilSemuaFoto = false,
+                    onPilih = { if (it != null) albumTerpilihId = it },
+                    onGeserTutup = { panelTerbuka = false },
+                    onSetelahDrop = onCloseSelecting,
+                    modifier = Modifier.weight(wPanel),
+                )
             }
-        } else {
-            MediaGrid(
-                kunciPosisi = "album_" + album.id,
-                items = freshItems,
-                level = level,
-                onLevelChange = { level = it },
-                selection = selection,
-                selecting = selecting,
-                isFavorite = { vm.isFavorite(it) },
-                onItemClick = onItemClick,
-                onItemLongClick = onItemLongClick,
-                contentPadding = PaddingValues(bottom = 96.dp),
-            )
+            Box(
+                Modifier
+                    .weight(1f - wPanel)
+                    .fillMaxHeight()
+                    .pointerInput(panelTerbuka) {
+                        var total = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { total = 0f },
+                            onDragEnd = {
+                                if (total > 90f && !panelTerbuka) panelTerbuka = true
+                                else if (total < -90f && panelTerbuka) panelTerbuka = false
+                            },
+                            onHorizontalDrag = { _, jumlah -> total += jumlah },
+                        )
+                    },
+            ) {
+                if (freshItems.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Album kosong", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    MediaGrid(
+                        kunciPosisi = "album_" + albumAktif.id,
+                        tanpaTanggal = true,
+                        onMulaiSeret = { panelTerbuka = true },
+                        items = freshItems,
+                        level = level,
+                        onLevelChange = { level = it },
+                        selection = selection,
+                        selecting = selecting,
+                        isFavorite = { vm.isFavorite(it) },
+                        onItemClick = { item -> onItemClick(freshItems, item) },
+                        onItemLongClick = onItemLongClick,
+                        contentPadding = PaddingValues(bottom = 96.dp),
+                    )
+                }
+                TombolBuletKembali(
+                    tampak = panelTerbuka || albumTerpilihId != album.id,
+                    onClick = {
+                        if (albumTerpilihId != album.id) albumTerpilihId = album.id
+                        else panelTerbuka = false
+                    },
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+            }
         }
+    }
+    KromPilihMengambang(
+        tampak = selecting,
+        count = selection.size,
+            driveConnected = vm.driveApiOn || vm.driveTreeUri != null,
+            onClose = onCloseSelecting,
+            onShare = onShareSelected,
+            onDelete = onDeleteSelected,
+            onUpload = onUploadSelected,
+            onBuatAlbum = { namaAlbumBaru = ""; buatAlbumTerbuka = true },
+            onSalinClipboard = { salinKeClipboard(vm, ctxUiDetail, pilihanKini) },
+            onSalinKeAlbum = { modeAlbumSheet = "salin" },
+            onPindahKeAlbum = { modeAlbumSheet = "pindah" },
+            onFavorit = {
+                var n = 0
+                for (pil in pilihanKini) if (!vm.isFavorite(pil)) { vm.toggleFavorite(pil); n++ }
+                vm.beriTahu(if (n == 0) "Sudah di Favorit semua" else "$n ditambah ke Favorit")
+                onCloseSelecting()
+            },
+    )
+    if (modeAlbumSheet != null) {
+        PemilihAlbumSheet(
+            albums = daftarAlbumDetail,
+            judul = if (modeAlbumSheet == "salin") "Salin ke album" else "Pindahkan ke album",
+            onPilih = { album ->
+                if (modeAlbumSheet == "salin") vm.salinBanyakKeAlbum(pilihanKini, album)
+                else vm.pindahBanyakKeAlbum(pilihanKini, album)
+                modeAlbumSheet = null
+                onCloseSelecting()
+            },
+            onDismiss = { modeAlbumSheet = null },
+        )
+    }
+    if (buatAlbumTerbuka) {
+        AlertDialog(
+            onDismissRequest = { buatAlbumTerbuka = false },
+            title = { Text("Album baru") },
+            text = {
+                OutlinedTextField(
+                    value = namaAlbumBaru,
+                    onValueChange = { namaAlbumBaru = it },
+                    label = { Text("Nama album") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        buatAlbumTerbuka = false
+                        vm.pindahKeFolderBaru(pilihanKini, namaAlbumBaru)
+                        onCloseSelecting()
+                    },
+                    enabled = namaAlbumBaru.isNotBlank(),
+                ) { Text("Buat") }
+            },
+            dismissButton = {
+                TextButton(onClick = { buatAlbumTerbuka = false }) { Text("Batal") }
+            },
+        )
+    }
     }
 }
 
@@ -1177,7 +2093,6 @@ fun MenuScreen(
     onLoginAkunLain: () -> Unit = {},
     onOpenTrash: () -> Unit = {},
 ) {
-    var tentangOpen by remember { mutableStateOf(false) }
     var akunKeluar by remember { mutableStateOf<String?>(null) }
     val ctxMenu = LocalContext.current
     // === Tambah akun: dialog Google dikunci ke akun yg dipilih user ===
@@ -1530,12 +2445,21 @@ fun MenuScreen(
         LabelSeksi("Lainnya")
         KartuMenu {
             BarisMenu(
-                judul = "Tentang",
-                sub = "Galeri FRM 1.57",
-                onClick = { tentangOpen = true },
+                judul = "Source GitHub",
+                sub = "Galeri FRM 1.79",
+                onClick = {
+                    runCatching {
+                        ctxMenu.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/frmdeveloper/gallery"),
+                            ),
+                        )
+                    }
+                },
             ) {
                 Icon(
-                    Icons.Filled.Info, null,
+                    Icons.Filled.Code, null,
                     tint = WarnaIkonMenu, modifier = Modifier.size(22.dp),
                 )
             }
@@ -1559,6 +2483,22 @@ fun MenuScreen(
                     )
                 }
             }
+        }
+        Spacer(Modifier.height(20.dp))
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.logo_frm),
+                contentDescription = null,
+                modifier = Modifier.height(30.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "By Fauzan Rifki Maulana",
+                color = WarnaSubMenu, fontSize = 12.sp,
+            )
         }
         Spacer(Modifier.height(28.dp))
     }
@@ -1643,29 +2583,6 @@ fun MenuScreen(
             dismissButton = {
                 TextButton(onClick = { akunKeluar = null }) { Text("Batal") }
             },
-        )
-    }
-    if (tentangOpen) {
-        AlertDialog(
-            onDismissRequest = { tentangOpen = false },
-            title = { Text("Galeri FRM") },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(
-                        painter = painterResource(R.drawable.logo_frm),
-                        contentDescription = null,
-                        modifier = Modifier.height(76.dp),
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                    "Galeri foto & video ala Samsung dengan album Google Drive.\n\n" +
-                        "Masuk pakai akun Google kamu sendiri lewat tab Menu. " +
-                        "Bisa beberapa akun sekaligus — isi Drive semua akun tampil " +
-                        "menyatu di galeri, kayak File Saya di Samsung."
-                    )
-                }
-            },
-            confirmButton = { TextButton(onClick = { tentangOpen = false }) { Text("Oke") } },
         )
     }
 }
@@ -1925,6 +2842,53 @@ fun SampulLagu(lagu: AudioItem, ukuran: Dp, radius: Dp = 8.dp, versi: Int = 0) {
     }
 }
 
+// SATU urutan buat SELURUH Audio (perintah user): ganti di tab langsung
+// ngubah folder, isi folder, & hasil cari sekaligus. Tanpa "Urutan bawaan".
+private val LABEL_URUTAN_AUDIO = listOf(
+    "Nama A–Z", "Nama Z–A", "Tanggal terbaru", "Tanggal terlama",
+    "Paling banyak isinya", "Durasi terpanjang", "Durasi terpendek",
+)
+
+private fun urutkanLagu(daftar: List<AudioItem>, urutan: Int): List<AudioItem> = when (urutan) {
+    2 -> daftar.sortedByDescending { it.title.lowercase() }
+    3 -> daftar.sortedByDescending { it.dateMillis }
+    4 -> daftar.sortedBy { it.dateMillis }
+    // "Paling banyak isinya" gak berlaku buat lagu -> samakan A-Z
+    5 -> daftar.sortedBy { it.title.lowercase() }
+    6 -> daftar.sortedByDescending { it.durationMs }
+    7 -> daftar.sortedBy { it.durationMs }
+    else -> daftar.sortedBy { it.title.lowercase() }
+}
+
+private fun urutkanFolderAudio(daftar: List<AudioFolder>, urutan: Int): List<AudioFolder> = when (urutan) {
+    2 -> daftar.sortedByDescending { it.name.lowercase() }
+    3 -> daftar.sortedByDescending { f -> f.items.maxOfOrNull { it.dateMillis } ?: 0L }
+    4 -> daftar.sortedBy { f -> f.items.maxOfOrNull { it.dateMillis } ?: 0L }
+    5 -> daftar.sortedByDescending { it.count }
+    6 -> daftar.sortedByDescending { f -> f.items.sumOf { it.durationMs } }
+    7 -> daftar.sortedBy { f -> f.items.sumOf { it.durationMs } }
+    else -> daftar.sortedBy { it.name.lowercase() }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MenuUrutanAudio(urutan: Int, onPilih: (Int) -> Unit) {
+    var terbuka by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { terbuka = true }) {
+            Icon(Icons.Filled.MoreVert, "Urutkan")
+        }
+        DropdownMenu(expanded = terbuka, onDismissRequest = { terbuka = false }) {
+            LABEL_URUTAN_AUDIO.forEachIndexed { i, label ->
+                DropdownMenuItem(
+                    text = { Text((if (urutan == i + 1) "✓ " else "") + label) },
+                    onClick = { terbuka = false; onPilih(i + 1) },
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AudioScreen(
@@ -1932,6 +2896,7 @@ fun AudioScreen(
     izinAudio: Boolean,
     onMintaIzin: () -> Unit,
     onOpenFolder: (AudioFolder) -> Unit,
+    onOpenPlayer: () -> Unit = {},
 ) {
     val ctxAudio = LocalContext.current
     var kolom by rememberSaveable { mutableIntStateOf(UiStore.loadInt(ctxAudio, "kolom_audio", 3)) }
@@ -1946,15 +2911,64 @@ fun AudioScreen(
     LaunchedEffect(izinAudio) {
         if (izinAudio) vm.reloadAudio()
     }
-    val tampil = remember(vm.audioFolders, query) {
+    var urutanAudio by remember { mutableIntStateOf(UiStore.loadInt(ctxAudio, "urutan_audio", 1)) }
+    LaunchedEffect(urutanAudio) { UiStore.saveInt(ctxAudio, "urutan_audio", urutanAudio) }
+    val tampil = remember(vm.audioFolders, urutanAudio) {
+        urutkanFolderAudio(vm.audioFolders, urutanAudio)
+    }
+    // Pencarian di tab Audio = cari FILE audio (judul/artis/album), BUKAN
+    // nama folder (perintah user); folder cuma tampil pas tidak mencari.
+    val hasilCari = remember(vm.laguDaftar, query, urutanAudio) {
         if (query.isBlank()) {
-            vm.audioFolders
+            emptyList()
         } else {
-            vm.audioFolders.filter { it.name.contains(query, ignoreCase = true) }
+            urutkanLagu(
+                vm.laguDaftar.filter {
+                    it.title.contains(query, ignoreCase = true) ||
+                        it.artist.contains(query, ignoreCase = true) ||
+                        it.album.contains(query, ignoreCase = true)
+                },
+                urutanAudio,
+            )
         }
+    }
+
+    // Mode pilih lagu (tap & tahan, kayak foto)
+    var pilihanLagu by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val memilihLagu = pilihanLagu.isNotEmpty()
+    var rincianLagu by remember { mutableStateOf<AudioItem?>(null) }
+    val penghapusLagu = remember { mutableStateOf<List<AudioItem>>(emptyList()) }
+    val peluncurHapusLagu = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { hasil ->
+        val target = penghapusLagu.value
+        penghapusLagu.value = emptyList()
+        if (hasil.resultCode == android.app.Activity.RESULT_OK && target.isNotEmpty()) {
+            vm.beriTahu("${target.size} lagu dihapus")
+            vm.reloadAudio()
+        }
+    }
+    BackHandler(enabled = memilihLagu) { pilihanLagu = emptySet() }
+    fun aksiHapusLagu(daftar: List<AudioItem>) {
+        val lokal = daftar.filter { it.akunDrive.isBlank() }
+        if (lokal.isEmpty()) {
+            vm.beriTahu("Lagu Drive tidak bisa dihapus dari sini")
+            return
+        }
+        if (lokal.size < daftar.size) {
+            vm.beriTahu("${daftar.size - lokal.size} lagu Drive dilewati")
+        }
+        penghapusLagu.value = lokal
+        val permintaan = MediaStore.createDeleteRequest(
+            ctxAudio.contentResolver, lokal.map { it.uri },
+        )
+        peluncurHapusLagu.launch(
+            IntentSenderRequest.Builder(permintaan.intentSender).build()
+        )
     }
     IngatPosisiList(statusDaftarAudio, "audio_daftar", tampil.size, aktif = query.isBlank())
     IngatPosisiGrid(statusGridAudio, "audio_grid", tampil.size, aktif = query.isBlank())
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Audio", fontWeight = FontWeight.Bold) },
@@ -1963,20 +2977,21 @@ fun AudioScreen(
                     "${vm.laguDaftar.size} lagu",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 16.dp),
+                    modifier = Modifier.padding(end = 4.dp),
                 )
+                MenuUrutanAudio(urutanAudio) { urutanAudio = it }
             },
         )
         if (izinAudio) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Cari folder…") },
+                placeholder = { Text("Cari lagu, artis, album…") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             )
             Text(
-                "Semua folder",
+                if (query.isBlank()) "Semua folder" else "Hasil pencarian",
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 2.dp),
@@ -1991,6 +3006,41 @@ fun AudioScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     Button(onClick = onMintaIzin) { Text("Izinkan akses audio") }
+                }
+            }
+            query.isNotBlank() -> if (hasilCari.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        if (vm.audioSedangDimuat) "Memuat audio…" else "Tidak ada lagu yang cocok",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = 6.dp, bottom = 170.dp),
+                ) {
+                    items(hasilCari, key = { it.key }) { lagu ->
+                        BarisLagu(
+                            vm, lagu,
+                            terpilih = lagu.key in pilihanLagu,
+                            memilih = memilihLagu,
+                            onLongClick = { pilihanLagu = pilihanLagu + lagu.key },
+                        ) {
+                            if (memilihLagu) {
+                                pilihanLagu = if (lagu.key in pilihanLagu) {
+                                    pilihanLagu - lagu.key
+                                } else {
+                                    pilihanLagu + lagu.key
+                                }
+                            } else if (vm.laguDimainkan?.key == lagu.key) {
+                                onOpenPlayer()
+                            } else {
+                                vm.putarLagu(lagu, hasilCari)
+                                onOpenPlayer()
+                            }
+                        }
+                    }
                 }
             }
             // Masih memuat (buka tab pertama kali / lagi sinkron): spinner
@@ -2008,7 +3058,7 @@ fun AudioScreen(
                 }
             tampil.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (query.isBlank()) "Tidak ada file musik di HP ini" else "Tidak ada folder yang cocok",
+                    "Tidak ada file musik di HP ini",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -2109,24 +3159,302 @@ fun AudioScreen(
             }
         }
     }
+    val daftarDipilihLagu = hasilCari.filter { it.key in pilihanLagu }
+    KromPilihLaguMengambang(
+        tampak = memilihLagu,
+        count = pilihanLagu.size,
+        semuaFavorit = daftarDipilihLagu.isNotEmpty() &&
+            daftarDipilihLagu.all { it.key in vm.favorites },
+        satuDipilih = daftarDipilihLagu.size == 1,
+        bisaUbahSampul = daftarDipilihLagu.size == 1 &&
+            daftarDipilihLagu.first().akunDrive.isBlank(),
+        onClose = { pilihanLagu = emptySet() },
+        onPutar = {
+            val d = daftarDipilihLagu
+            if (d.isNotEmpty()) {
+                pilihanLagu = emptySet()
+                vm.putarLagu(d.first(), d)
+                onOpenPlayer()
+            }
+        },
+        onShare = {
+            val d = daftarDipilihLagu
+            if (d.any { it.akunDrive.isBlank() }) {
+                shareLagu(ctxAudio, d)
+                pilihanLagu = emptySet()
+            } else {
+                vm.beriTahu("Lagu Drive tidak bisa dibagikan langsung")
+            }
+        },
+        onDelete = {
+            val d = daftarDipilihLagu
+            pilihanLagu = emptySet()
+            aksiHapusLagu(d)
+        },
+        onFavorit = {
+            val d = daftarDipilihLagu
+            val target = d.isNotEmpty() && !d.all { it.key in vm.favorites }
+            d.forEach {
+                if ((it.key in vm.favorites) != target) vm.toggleFavoritLagu(it)
+            }
+            pilihanLagu = emptySet()
+        },
+        onUbahSampul = {
+            val l = daftarDipilihLagu.firstOrNull()
+            pilihanLagu = emptySet()
+            if (l != null) vm.mulaiGantiCover(l)
+        },
+        onRincian = { rincianLagu = daftarDipilihLagu.firstOrNull() },
+    )
+    DialogRincianLagu(rincianLagu) { rincianLagu = null }
+    }
 }
 
-/** Satu baris lagu (dipakai daftar lagu per folder). */
+/** Krom pilih LAGU mengambang — pola sama persis KromPilihMengambang foto:
+ * pil jumlah + Batal di atas, pil aksi di bawah, kartu Lainnya meluncur naik.
+ * Semua AnimatedVisibility selalu ter-compose, visibilitas dari flag saja. */
+@Composable
+fun KromPilihLaguMengambang(
+    tampak: Boolean,
+    count: Int,
+    semuaFavorit: Boolean,
+    satuDipilih: Boolean,
+    bisaUbahSampul: Boolean,
+    onClose: () -> Unit,
+    onPutar: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit,
+    onFavorit: () -> Unit,
+    onUbahSampul: () -> Unit,
+    onRincian: () -> Unit,
+) {
+    var menuLainnya by remember { mutableStateOf(false) }
+    LaunchedEffect(tampak) { if (!tampak) menuLainnya = false }
+    Box(Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = tampak,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter = fadeIn(tween(220)) +
+                slideInVertically(tween(300, easing = FastOutSlowInEasing)) { -it / 2 },
+            exit = fadeOut(tween(180)) +
+                slideOutVertically(tween(240)) { -it / 2 },
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    Modifier
+                        .height(40.dp)
+                        .shadow(4.dp, CircleShape)
+                        .background(Color.White, CircleShape)
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Outlined.Circle, null, tint = Color(0xFF191919),
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "$count", fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                        color = Color(0xFF191919),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier
+                        .height(40.dp)
+                        .shadow(4.dp, CircleShape)
+                        .background(Color.White, CircleShape)
+                        .clickable(onClick = onClose)
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "Batal", fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                        color = Color(0xFF191919),
+                    )
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = menuLainnya,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(180)),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { menuLainnya = false },
+            )
+        }
+        AnimatedVisibility(
+            visible = menuLainnya,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(tween(200)) +
+                slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it },
+            exit = fadeOut(tween(160)) +
+                slideOutVertically(tween(260)) { it },
+        ) {
+            Column(
+                Modifier
+                    .navigationBarsPadding()
+                    .padding(bottom = 156.dp)
+                    .fillMaxWidth(0.8f)
+                    .widthIn(max = 340.dp)
+                    .shadow(12.dp, RoundedCornerShape(28.dp))
+                    .background(Color.White, RoundedCornerShape(28.dp))
+                    .padding(vertical = 10.dp),
+            ) {
+                if (bisaUbahSampul) {
+                    ItemMenuLainnya("Ubah sampul") { menuLainnya = false; onUbahSampul() }
+                }
+                if (satuDipilih) {
+                    ItemMenuLainnya("Rincian") { menuLainnya = false; onRincian() }
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = tampak,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(tween(220)) +
+                slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it },
+            exit = fadeOut(tween(180)) +
+                slideOutVertically(tween(240)) { it },
+        ) {
+            Row(
+                Modifier
+                    .navigationBarsPadding()
+                    .padding(bottom = 84.dp)
+                    .shadow(8.dp, CircleShape)
+                    .background(Color.White, CircleShape)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ItemBarPilih(Icons.Filled.PlayArrow, "Putar") { onPutar() }
+                ItemBarPilih(Icons.Filled.Share, "Berbagi") { onShare() }
+                ItemBarPilih(
+                    if (semuaFavorit) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    "Favorit",
+                ) { onFavorit() }
+                ItemBarPilih(Icons.Filled.Delete, "Hapus") { onDelete() }
+                if (satuDipilih) {
+                    ItemBarPilih(Icons.Filled.MoreVert, "Lainnya") { menuLainnya = !menuLainnya }
+                }
+            }
+        }
+    }
+}
+
+/** Dialog rincian satu lagu (dipakai mode pilih audio). */
+@Composable
+fun DialogRincianLagu(lagu: AudioItem?, onDismiss: () -> Unit) {
+    if (lagu == null) return
+    val berkasLokal = remember(lagu.key) {
+        if (lagu.akunDrive.isBlank() && lagu.path.isNotBlank()) {
+            java.io.File(lagu.path).takeIf { it.exists() }
+        } else null
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rincian") },
+        text = {
+            Text(
+                buildString {
+                    append("Judul: ${lagu.title}\n")
+                    append("Artis: ${lagu.artist}\n")
+                    if (lagu.album.isNotBlank()) append("Album: ${lagu.album}\n")
+                    append("Durasi: ${formatDurasi(lagu.durationMs)}\n")
+                    append(
+                        "Sumber: " + if (lagu.akunDrive.isNotBlank()) {
+                            "Google Drive (${lagu.akunDrive})"
+                        } else {
+                            "Perangkat"
+                        }
+                    )
+                    if (lagu.path.isNotBlank()) append("\nLokasi: ${lagu.path}")
+                    berkasLokal?.let {
+                        append("\nUkuran: ${formatUkuranBerkas(it.length())}")
+                    }
+                    if (lagu.dateMillis > 0) {
+                        append(
+                            "\nTanggal: " + java.text.SimpleDateFormat(
+                                "d MMM yyyy", java.util.Locale("id", "ID"),
+                            ).format(java.util.Date(lagu.dateMillis))
+                        )
+                    }
+                }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Tutup") }
+        },
+    )
+}
+
+
+/** Satu baris lagu (dipakai daftar lagu per folder & hasil cari audio).
+ * Tap & tahan = masuk MODE PILIH kayak foto (perintah user), bukan menu. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BarisLagu(
     vm: GalleryViewModel,
     lagu: AudioItem,
+    terpilih: Boolean = false,
+    memilih: Boolean = false,
+    onLongClick: () -> Unit = {},
     onClick: () -> Unit,
 ) {
     val aktif = vm.laguDimainkan?.key == lagu.key
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .background(
+                if (terpilih) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                else Color.Transparent
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SampulLagu(lagu, 52.dp, versi = vm.versiCover)
+        Box {
+            SampulLagu(lagu, 52.dp, versi = vm.versiCover)
+            if (memilih) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 4.dp, y = 4.dp)
+                        .size(20.dp)
+                        .then(
+                            if (terpilih) {
+                                Modifier.background(Color(0xFF0381FE), CircleShape)
+                            } else {
+                                Modifier
+                                    .background(Color.White, CircleShape)
+                                    .border(1.5.dp, Color(0xFF9E9E9E), CircleShape)
+                            }
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (terpilih) {
+                        Icon(
+                            Icons.Filled.Check, null, tint = Color.White,
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                }
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -2165,11 +3493,14 @@ fun AudioTracksScreen(
     onBack: () -> Unit,
     onOpenPlayer: () -> Unit,
 ) {
+    val ctxTracks = LocalContext.current
     // Ambil versi segar dari VM (reload bisa mengubah isi folder)
     val folderKini = vm.audioFolders.firstOrNull { it.id == folder.id } ?: folder
     var query by rememberSaveable { mutableStateOf("") }
-    val tampil = remember(folderKini.items, query) {
-        if (query.isBlank()) {
+    var urutanAudio by remember { mutableIntStateOf(UiStore.loadInt(ctxTracks, "urutan_audio", 1)) }
+    LaunchedEffect(urutanAudio) { UiStore.saveInt(ctxTracks, "urutan_audio", urutanAudio) }
+    val tampil = remember(folderKini.items, query, urutanAudio) {
+        val dasar = if (query.isBlank()) {
             folderKini.items
         } else {
             folderKini.items.filter {
@@ -2178,7 +3509,43 @@ fun AudioTracksScreen(
                     it.album.contains(query, ignoreCase = true)
             }
         }
+        urutkanLagu(dasar, urutanAudio)
     }
+
+    // Mode pilih lagu (tap & tahan, kayak foto)
+    var pilihanLagu by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val memilihLagu = pilihanLagu.isNotEmpty()
+    var rincianLagu by remember { mutableStateOf<AudioItem?>(null) }
+    val penghapusLagu = remember { mutableStateOf<List<AudioItem>>(emptyList()) }
+    val peluncurHapusLagu = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { hasil ->
+        val target = penghapusLagu.value
+        penghapusLagu.value = emptyList()
+        if (hasil.resultCode == android.app.Activity.RESULT_OK && target.isNotEmpty()) {
+            vm.beriTahu("${target.size} lagu dihapus")
+            vm.reloadAudio()
+        }
+    }
+    BackHandler(enabled = memilihLagu) { pilihanLagu = emptySet() }
+    fun aksiHapusLagu(daftar: List<AudioItem>) {
+        val lokal = daftar.filter { it.akunDrive.isBlank() }
+        if (lokal.isEmpty()) {
+            vm.beriTahu("Lagu Drive tidak bisa dihapus dari sini")
+            return
+        }
+        if (lokal.size < daftar.size) {
+            vm.beriTahu("${daftar.size - lokal.size} lagu Drive dilewati")
+        }
+        penghapusLagu.value = lokal
+        val permintaan = MediaStore.createDeleteRequest(
+            ctxTracks.contentResolver, lokal.map { it.uri },
+        )
+        peluncurHapusLagu.launch(
+            IntentSenderRequest.Builder(permintaan.intentSender).build()
+        )
+    }
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = {
@@ -2197,8 +3564,9 @@ fun AudioTracksScreen(
                     "${folderKini.count} lagu",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 16.dp),
+                    modifier = Modifier.padding(end = 4.dp),
                 )
+                MenuUrutanAudio(urutanAudio) { urutanAudio = it }
             },
         )
         OutlinedTextField(
@@ -2221,8 +3589,19 @@ fun AudioTracksScreen(
                 contentPadding = PaddingValues(top = 6.dp, bottom = 170.dp),
             ) {
                 items(tampil, key = { it.key }) { lagu ->
-                    BarisLagu(vm, lagu) {
-                        if (vm.laguDimainkan?.key == lagu.key) {
+                    BarisLagu(
+                        vm, lagu,
+                        terpilih = lagu.key in pilihanLagu,
+                        memilih = memilihLagu,
+                        onLongClick = { pilihanLagu = pilihanLagu + lagu.key },
+                    ) {
+                        if (memilihLagu) {
+                            pilihanLagu = if (lagu.key in pilihanLagu) {
+                                pilihanLagu - lagu.key
+                            } else {
+                                pilihanLagu + lagu.key
+                            }
+                        } else if (vm.laguDimainkan?.key == lagu.key) {
                             // Lagu yg SAMA lagi diputar: jangan diulang
                             // dari awal — langsung masuk pemutarnya aja
                             onOpenPlayer()
@@ -2234,6 +3613,55 @@ fun AudioTracksScreen(
                 }
             }
         }
+    }
+    val daftarDipilihLagu = tampil.filter { it.key in pilihanLagu }
+    KromPilihLaguMengambang(
+        tampak = memilihLagu,
+        count = pilihanLagu.size,
+        semuaFavorit = daftarDipilihLagu.isNotEmpty() &&
+            daftarDipilihLagu.all { it.key in vm.favorites },
+        satuDipilih = daftarDipilihLagu.size == 1,
+        bisaUbahSampul = daftarDipilihLagu.size == 1 &&
+            daftarDipilihLagu.first().akunDrive.isBlank(),
+        onClose = { pilihanLagu = emptySet() },
+        onPutar = {
+            val d = daftarDipilihLagu
+            if (d.isNotEmpty()) {
+                pilihanLagu = emptySet()
+                vm.putarLagu(d.first(), d)
+                onOpenPlayer()
+            }
+        },
+        onShare = {
+            val d = daftarDipilihLagu
+            if (d.any { it.akunDrive.isBlank() }) {
+                shareLagu(ctxTracks, d)
+                pilihanLagu = emptySet()
+            } else {
+                vm.beriTahu("Lagu Drive tidak bisa dibagikan langsung")
+            }
+        },
+        onDelete = {
+            val d = daftarDipilihLagu
+            pilihanLagu = emptySet()
+            aksiHapusLagu(d)
+        },
+        onFavorit = {
+            val d = daftarDipilihLagu
+            val target = d.isNotEmpty() && !d.all { it.key in vm.favorites }
+            d.forEach {
+                if ((it.key in vm.favorites) != target) vm.toggleFavoritLagu(it)
+            }
+            pilihanLagu = emptySet()
+        },
+        onUbahSampul = {
+            val l = daftarDipilihLagu.firstOrNull()
+            pilihanLagu = emptySet()
+            if (l != null) vm.mulaiGantiCover(l)
+        },
+        onRincian = { rincianLagu = daftarDipilihLagu.firstOrNull() },
+    )
+    DialogRincianLagu(rincianLagu) { rincianLagu = null }
     }
 }
 
@@ -2491,7 +3919,7 @@ fun PlayerScreen(
                 )
             },
       ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             // Bar atas tipis: tombol turun/tutup ala iOS
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -2918,6 +4346,47 @@ fun LayarPotongCover(
     }
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
+        // Header: Batal & Selesai di ATAS (perintah user — di bawah
+        // ketutup navbar; di atas dikasih statusBarsPadding biar gak
+        // ketutup status bar juga)
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onBatal) {
+                Text("Batal", color = Color(0xFF4CD964), fontSize = 15.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = {
+                val g = gambar
+                val f = rectFoto
+                if (g != null && f != null && kotak != Rect.Zero && f.width > 0f) {
+                    val skala = g.width / f.width
+                    var sisiPx = (kotak.width * skala).roundToInt()
+                    sisiPx = minOf(sisiPx, g.width, g.height)
+                    val sx = ((kotak.left - f.left) * skala).roundToInt()
+                        .coerceIn(0, g.width - sisiPx)
+                    val sy = ((kotak.top - f.top) * skala).roundToInt()
+                        .coerceIn(0, g.height - sisiPx)
+                    val potongan = Bitmap.createBitmap(g, sx, sy, sisiPx, sisiPx)
+                    val akhir = if (sisiPx > 1024) {
+                        Bitmap.createScaledBitmap(potongan, 1024, 1024, true)
+                    } else {
+                        potongan
+                    }
+                    val baos = java.io.ByteArrayOutputStream()
+                    akhir.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+                    onSimpan(baos.toByteArray())
+                }
+            }) {
+                Text(
+                    "Selesai", color = Color(0xFF4CD964), fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
         Box(
             Modifier.weight(1f).fillMaxWidth().onSizeChanged { wadah = it },
             contentAlignment = Alignment.Center,
@@ -2948,13 +4417,11 @@ fun LayarPotongCover(
         }
         Row(
             modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 14.dp),
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
         ) {
-            TextButton(onClick = onBatal) {
-                Text("Batal", color = Color(0xFF4CD964), fontSize = 15.sp)
-            }
-            Spacer(Modifier.weight(1f))
             IconButton(onClick = {
                 val g = gambar ?: return@IconButton
                 val m = android.graphics.Matrix().apply { postRotate(90f) }
@@ -2964,34 +4431,6 @@ fun LayarPotongCover(
                 Icon(
                     Icons.Filled.RotateRight, "Putar 90°",
                     tint = Color.White, modifier = Modifier.size(26.dp),
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = {
-                val g = gambar
-                val f = rectFoto
-                if (g != null && f != null && kotak != Rect.Zero && f.width > 0f) {
-                    val skala = g.width / f.width
-                    var sisiPx = (kotak.width * skala).roundToInt()
-                    sisiPx = minOf(sisiPx, g.width, g.height)
-                    val sx = ((kotak.left - f.left) * skala).roundToInt()
-                        .coerceIn(0, g.width - sisiPx)
-                    val sy = ((kotak.top - f.top) * skala).roundToInt()
-                        .coerceIn(0, g.height - sisiPx)
-                    val potongan = Bitmap.createBitmap(g, sx, sy, sisiPx, sisiPx)
-                    val akhir = if (sisiPx > 1024) {
-                        Bitmap.createScaledBitmap(potongan, 1024, 1024, true)
-                    } else {
-                        potongan
-                    }
-                    val baos = java.io.ByteArrayOutputStream()
-                    akhir.compress(Bitmap.CompressFormat.JPEG, 90, baos)
-                    onSimpan(baos.toByteArray())
-                }
-            }) {
-                Text(
-                    "Selesai", color = Color(0xFF4CD964), fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
                 )
             }
         }
