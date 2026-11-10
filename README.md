@@ -2,6 +2,14 @@
   <img src="app/src/main/res/drawable-nodpi/ic_launcher_art.png" width="160" alt="Galeri FRM icon" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/frmdeveloper/gallery/releases/download/v1.85/GaleriFRM-v1.85.apk">
+    <img src="https://img.shields.io/badge/Download-GaleriFRM--v1.85.apk-007AFF?style=for-the-badge&logo=android&logoColor=white" alt="Download Galeri FRM APK" />
+  </a>
+  <br />
+  <sub><a href="https://github.com/frmdeveloper/gallery/releases">All releases</a></sub>
+</p>
+
 # Galeri FRM
 
 A Samsung Gallery-style photo & video gallery powered by your Google Drive.
