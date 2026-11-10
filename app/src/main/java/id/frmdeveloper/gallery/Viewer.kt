@@ -1142,310 +1142,210 @@ private fun LayarModeMusikVideo(
             )
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onKeluar) {
-                    Icon(
-                        Icons.Filled.KeyboardArrowDown, "Kembali ke pemutar video",
-                        tint = Color.White, modifier = Modifier.size(30.dp),
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = { toastMode("Antrean putar = daftar video yang dibuka") }) {
-                    Icon(Icons.Filled.QueueMusic, "Antrean", tint = Color.White.copy(alpha = 0.85f))
-                }
-            }
-            Spacer(Modifier.weight(0.85f))
-            // Kartu kaca ala pemutar musik
-            Surface(
-                shape = RoundedCornerShape(32.dp),
-                color = Color.Black.copy(alpha = 0.34f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.13f)),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 34.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+        // Kartu PAS DI TENGAH layar, PERSIS kayak pemutar audio
+        // (perintah user 2026-11-10): dua tombol pojok atas DIHAPUS —
+        // keluar mode musik = tombol Back (BackHandler modeMusik).
+        Box(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
+            contentAlignment = Alignment.Center,
+        ) {
+            var menuLainVideo by remember { mutableStateOf(false) }
+            var rincianVideo by remember { mutableStateOf(false) }
+            KartuKacaPemutar { u ->
+                // Kotak "cover" = video yg lagi muter
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(u * 24))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    // Kotak "cover" = video yg lagi muter
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.Black),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        AndroidView(
-                            factory = { ctx ->
-                                val pv = android.view.LayoutInflater.from(ctx)
-                                    .inflate(R.layout.player_view, null) as PlayerView
-                                pv.player = player
-                                pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                viewCover = pv
-                                onDaftarView(pv)
-                                pv
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                    Spacer(Modifier.height(24.dp))
-                    var menuLainVideo by remember { mutableStateOf(false) }
-                    var rincianVideo by remember { mutableStateOf(false) }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                item.name, fontSize = 19.sp, fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                "Video", fontSize = 16.sp,
-                                color = Color.White.copy(alpha = 0.55f), maxLines = 1,
-                            )
-                        }
-                        IconButton(onClick = { toastMode("Lirik belum tersedia") }) {
-                            Icon(
-                                Icons.Filled.GraphicEq, "Lirik",
-                                tint = Color.White.copy(alpha = 0.75f),
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { menuLainVideo = true }) {
-                                Icon(
-                                    Icons.Filled.MoreVert, "Lainnya",
-                                    tint = Color.White.copy(alpha = 0.75f),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = menuLainVideo,
-                                onDismissRequest = { menuLainVideo = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Acak") },
-                                    leadingIcon = { Icon(Icons.Filled.Shuffle, null) },
-                                    trailingIcon = if (acakVideo) {
-                                        { Icon(Icons.Filled.Check, null) }
-                                    } else null,
-                                    onClick = { acakVideo = !acakVideo; menuLainVideo = false },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Favorit") },
-                                    leadingIcon = {
-                                        Icon(
-                                            if (favorit) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                            null,
-                                        )
-                                    },
-                                    trailingIcon = if (favorit) {
-                                        { Icon(Icons.Filled.Check, null) }
-                                    } else null,
-                                    onClick = { onToggleFavorite(); menuLainVideo = false },
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            "Putar ulang: " + when (ulangVideo) {
-                                                1 -> "Semua"
-                                                2 -> "Satu"
-                                                else -> "Mati"
-                                            }
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            if (ulangVideo == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
-                                            null,
-                                        )
-                                    },
-                                    onClick = { ulangVideo = (ulangVideo + 1) % 3; menuLainVideo = false },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Rincian") },
-                                    leadingIcon = { Icon(Icons.Filled.Info, null) },
-                                    onClick = { menuLainVideo = false; rincianVideo = true },
-                                )
-                            }
-                        }
-                    }
-                    if (rincianVideo) {
-                        AlertDialog(
-                            onDismissRequest = { rincianVideo = false },
-                            title = { Text("Rincian") },
-                            text = {
-                                Text(
-                                    buildString {
-                                        append("Nama: ${item.name}\n")
-                                        append("Jenis: Video\n")
-                                        append("Durasi: ${formatDurasi(durasiMs)}")
-                                        append(
-                                            "\nSumber: " + if (item.akunDrive.isNotBlank()) {
-                                                "Google Drive (${item.akunDrive})"
-                                            } else {
-                                                "Perangkat"
-                                            }
-                                        )
-                                        if (item.dateMillis > 0) {
-                                            append(
-                                                "\nTanggal: " + java.text.SimpleDateFormat(
-                                                    "d MMM yyyy", java.util.Locale("id", "ID"),
-                                                ).format(java.util.Date(item.dateMillis))
-                                            )
-                                        }
-                                    }
-                                )
-                            },
-                            confirmButton = {
-                                TextButton(onClick = { rincianVideo = false }) { Text("Tutup") }
-                            },
-                        )
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    // Seekbar TIPIS yg sama persis kayak pemutar audio
-                    val durasiAmanMusik = durasiMs.coerceAtLeast(1)
-                    val posisiKiniMusik = geser ?: posisiMs.toFloat()
-                    // BarGeserTipis menyimpan callback komposisi PERTAMA
-                    // (pointerInput(Unit)) — parameter geser yg kebaca di
-                    // onSelesai bisa basi (null) makanya seek nggak pernah
-                    // jalan & bar balik ke posisi putar (laporan user).
-                    // rememberUpdatedState selalu nunjuk nilai terbaru.
-                    val geserKini by rememberUpdatedState(geser)
-                    BarGeserTipis(
-                        fraksi = (posisiKiniMusik / durasiAmanMusik).coerceIn(0f, 1f),
-                        onGeser = { f -> onGeser(f * durasiAmanMusik) },
-                        onSelesai = {
-                            geserKini?.let { player.seekTo(it.toLong()) }
-                            onGeser(null)
+                    AndroidView(
+                        factory = { ctx ->
+                            val pv = android.view.LayoutInflater.from(ctx)
+                                .inflate(R.layout.player_view, null) as PlayerView
+                            pv.player = player
+                            pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            viewCover = pv
+                            onDaftarView(pv)
+                            pv
                         },
-                        tinggi = 5.dp,
-                        knob = true,
+                        modifier = Modifier.fillMaxSize(),
                     )
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(
-                            formatDurasi(posisiKiniMusik.toLong()),
-                            fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f),
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            "-" + formatDurasi((durasiMs - posisiKiniMusik.toLong()).coerceAtLeast(0)),
-                            fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f),
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    // Transport: ⏮ • ⏯ • ⏭ DI TENGAH (perintah user);
-                    // acak/favorit/ulang pindah ke menu ⋮ di samping Lirik
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        IconButton(
-                            onClick = {
-                                if (posisiMs > 3000) player.seekTo(0)
-                                else if (acakVideo) onLompatAcak() else onPrev()
-                            },
-                            enabled = adaPrev || acakVideo || posisiMs > 3000,
-                            modifier = Modifier.size(56.dp),
+                }
+                Spacer(Modifier.height(u * 52))
+                // Judul + "Video" (kiri) • ikon gelombang (kanan) =
+                // menu lama (acak / favorit / putar ulang / rincian);
+                // visual tetap persis referensi tanpa titik tiga.
+                BarisJudulPemutar(item.name, "Video", u) {
+                    Box {
+                        Box(
+                            Modifier
+                                .size(u * 64, u * 76)
+                                .clickable { menuLainVideo = true },
+                            contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                Icons.Filled.SkipPrevious, "Sebelumnya",
-                                tint = Color.White.copy(alpha = if (adaPrev || acakVideo || posisiMs > 3000) 1f else 0.35f),
-                                modifier = Modifier.size(40.dp),
+                                Icons.Filled.GraphicEq, "Menu lainnya",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(u * 36),
                             )
                         }
-                        Spacer(Modifier.width(28.dp))
-                        IconButton(
-                            onClick = {
-                                if (selesai) {
-                                    player.seekTo(0)
-                                    player.play()
-                                } else if (muter) {
-                                    player.pause()
-                                } else {
-                                    player.play()
-                                }
-                            },
-                            modifier = Modifier.size(72.dp),
+                        DropdownMenu(
+                            expanded = menuLainVideo,
+                            onDismissRequest = { menuLainVideo = false },
                         ) {
-                            Icon(
-                                if (muter) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                if (muter) "Jeda" else "Putar",
-                                tint = Color.White, modifier = Modifier.size(56.dp),
+                            DropdownMenuItem(
+                                text = { Text("Acak") },
+                                leadingIcon = { Icon(Icons.Filled.Shuffle, null) },
+                                trailingIcon = if (acakVideo) {
+                                    { Icon(Icons.Filled.Check, null) }
+                                } else null,
+                                onClick = { acakVideo = !acakVideo; menuLainVideo = false },
                             )
-                        }
-                        Spacer(Modifier.width(28.dp))
-                        IconButton(
-                            onClick = { if (acakVideo) onLompatAcak() else onNext() },
-                            enabled = adaNext || acakVideo,
-                            modifier = Modifier.size(56.dp),
-                        ) {
-                            Icon(
-                                Icons.Filled.SkipNext, "Berikutnya",
-                                tint = Color.White.copy(alpha = if (adaNext || acakVideo) 1f else 0.35f),
-                                modifier = Modifier.size(40.dp),
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    // Bar volume GEMUK ala iOS (sama kayak pemutar audio)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Filled.VolumeMute, null,
-                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(18.dp),
-                        )
-                        Box(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                            BarGeserTipis(
-                                fraksi = if (maksVolume > 0) volume / maksVolume else 0f,
-                                onGeser = { f ->
-                                    val vBaru = (f * maksVolume).toInt()
-                                    volume = vBaru.toFloat()
-                                    runCatching {
-                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vBaru, 0)
-                                    }
+                            DropdownMenuItem(
+                                text = { Text("Favorit") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (favorit) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                        null,
+                                    )
                                 },
-                                onSelesai = {},
-                                tinggi = 9.dp,
-                                knob = false,
+                                trailingIcon = if (favorit) {
+                                    { Icon(Icons.Filled.Check, null) }
+                                } else null,
+                                onClick = { onToggleFavorite(); menuLainVideo = false },
                             )
-                        }
-                        Icon(
-                            Icons.Filled.VolumeUp, null,
-                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    Spacer(Modifier.height(18.dp))
-                    // Pill output ala AirPlay (sama kayak pemutar audio)
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = Color.White.copy(alpha = 0.16f),
-                        modifier = Modifier.clickable {
-                            toastMode("Output suara: $namaOutput")
-                        },
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Filled.Cast, null,
-                                tint = Color.White, modifier = Modifier.size(20.dp),
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "Putar ulang: " + when (ulangVideo) {
+                                            1 -> "Semua"
+                                            2 -> "Satu"
+                                            else -> "Mati"
+                                        }
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        if (ulangVideo == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                                        null,
+                                    )
+                                },
+                                onClick = { ulangVideo = (ulangVideo + 1) % 3; menuLainVideo = false },
                             )
-                            Spacer(Modifier.width(9.dp))
-                            Text(namaOutput, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            DropdownMenuItem(
+                                text = { Text("Rincian") },
+                                leadingIcon = { Icon(Icons.Filled.Info, null) },
+                                onClick = { menuLainVideo = false; rincianVideo = true },
+                            )
                         }
                     }
                 }
+                if (rincianVideo) {
+                    AlertDialog(
+                        onDismissRequest = { rincianVideo = false },
+                        title = { Text("Rincian") },
+                        text = {
+                            Text(
+                                buildString {
+                                    append("Nama: ${item.name}\n")
+                                    append("Jenis: Video\n")
+                                    append("Durasi: ${formatDurasi(durasiMs)}")
+                                    append(
+                                        "\nSumber: " + if (item.akunDrive.isNotBlank()) {
+                                            "Google Drive (${item.akunDrive})"
+                                        } else {
+                                            "Perangkat"
+                                        }
+                                    )
+                                    if (item.dateMillis > 0) {
+                                        append(
+                                            "\nTanggal: " + java.text.SimpleDateFormat(
+                                                "d MMM yyyy", java.util.Locale("id", "ID"),
+                                            ).format(java.util.Date(item.dateMillis))
+                                        )
+                                    }
+                                }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { rincianVideo = false }) { Text("Tutup") }
+                        },
+                    )
+                }
+                Spacer(Modifier.height(u * 48))
+                // Bar durasi pil gemuk tanpa knob (sama persis pemutar audio)
+                val durasiAmanMusik = durasiMs.coerceAtLeast(1)
+                val posisiKiniMusik = geser ?: posisiMs.toFloat()
+                // BarGeserTipis menyimpan callback komposisi PERTAMA —
+                // rememberUpdatedState selalu nunjuk nilai terbaru.
+                val geserKini by rememberUpdatedState(geser)
+                val durasiKiniMusik by rememberUpdatedState(durasiAmanMusik)
+                BarGeserTipis(
+                    fraksi = (posisiKiniMusik / durasiAmanMusik).coerceIn(0f, 1f),
+                    onGeser = { f -> onGeser(f * durasiKiniMusik) },
+                    onSelesai = {
+                        geserKini?.let { player.seekTo(it.toLong()) }
+                        onGeser(null)
+                    },
+                    tinggi = u * 17,
+                    knob = false,
+                )
+                Spacer(Modifier.height(u * 10))
+                BarisWaktuPemutar(
+                    formatDurasi(posisiKiniMusik.toLong()),
+                    "-" + formatDurasi((durasiMs - posisiKiniMusik.toLong()).coerceAtLeast(0)),
+                    u,
+                )
+                Spacer(Modifier.height(u * 26))
+                // Transport PERSIS referensi: bintang • prev • jeda • next
+                BarisTransportPemutar(
+                    u = u,
+                    favorit = favorit,
+                    onFavorit = onToggleFavorite,
+                    onPrev = {
+                        if (posisiMs > 3000) player.seekTo(0)
+                        else if (acakVideo) onLompatAcak() else onPrev()
+                    },
+                    onPlayPause = {
+                        if (selesai) {
+                            player.seekTo(0)
+                            player.play()
+                        } else if (muter) {
+                            player.pause()
+                        } else {
+                            player.play()
+                        }
+                    },
+                    muter = muter,
+                    onNext = { if (acakVideo) onLompatAcak() else onNext() },
+                    prevAktif = adaPrev || acakVideo || posisiMs > 3000,
+                    nextAktif = adaNext || acakVideo,
+                )
+                Spacer(Modifier.height(u * 62))
+                // Bar volume pil tanpa knob, diapit ikon speaker
+                BarisVolumePemutar(
+                    u = u,
+                    fraksi = if (maksVolume > 0) volume / maksVolume else 0f,
+                    onGeser = { f ->
+                        val vBaru = (f * maksVolume).toInt()
+                        volume = vBaru.toFloat()
+                        runCatching {
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vBaru, 0)
+                        }
+                    },
+                )
+                Spacer(Modifier.height(u * 24))
+                // Pil output ala AirPlay
+                PillOutputPemutar(u, namaOutput) {
+                    toastMode("Output suara: $namaOutput")
+                }
             }
-            Spacer(Modifier.weight(1f))
         }
     }
 }

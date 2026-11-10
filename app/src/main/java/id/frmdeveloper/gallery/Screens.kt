@@ -967,6 +967,7 @@ fun TimelineScreen(
     onShareSelected: () -> Unit,
     onDeleteSelected: () -> Unit,
     onUploadSelected: () -> Unit,
+    sembunyikanKromPilih: Boolean = false,
 ) {
     val ctxUi = LocalContext.current
     var level by rememberSaveable { mutableIntStateOf(UiStore.loadInt(ctxUi, "zoom_gambar", 1)) }
@@ -1147,7 +1148,7 @@ fun TimelineScreen(
         }
     }
     KromPilihMengambang(
-        tampak = selecting,
+        tampak = selecting && !sembunyikanKromPilih,
         count = selection.size,
             driveConnected = vm.driveApiOn || vm.driveTreeUri != null,
             onClose = onCloseSelecting,
@@ -2446,7 +2447,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Source GitHub",
-                sub = "Galeri FRM 1.79",
+                sub = "Galeri FRM 1.82",
                 onClick = {
                     runCatching {
                         ctxMenu.startActivity(
@@ -3777,6 +3778,222 @@ fun BarGeserTipis(
     }
 }
 
+/**
+ * === Komponen kartu pemutar (DIUKUR dari screenshot referensi user
+ * 2026-11-10, gambar 1079x1910) ===
+ * Kartu: lebar 840px dari 1079 (78% layar), radius 80px, di TENGAH layar.
+ * Isi: inset 52px; cover persegi 736x736 radius 24px; judul 45px bold,
+ * artis 30px; bar durasi tebal 17px TANPA knob (pil penuh, isi putih,
+ * jalur pucat); waktu 26px; kontrol tinggi 81px — bintang di kiri lalu
+ * prev/jeda/next berjarak sama 142px antar tengahnya; bar volume 14px
+ * diapit ikon speaker; pil output 264x83px radius penuh di tengah.
+ * Semua ukuran diskalakan dari SATUAN u = lebarKartu / 840 biar
+ * proporsinya persis di layar berapa pun.
+ */
+@Composable
+fun KartuKacaPemutar(
+    modifier: Modifier = Modifier,
+    konten: @Composable ColumnScope.(Dp) -> Unit,
+) {
+    BoxWithConstraints(modifier.fillMaxWidth(0.78f)) {
+        val u = maxWidth / 840f
+        Surface(
+            shape = RoundedCornerShape(u * 80),
+            color = Color.Black.copy(alpha = 0.34f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.13f)),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = u * 52, vertical = u * 50),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                konten(u)
+            }
+        }
+    }
+}
+
+/** Baris judul + artis (kiri) dan [ekor] kecil di kanan (ikon gelombang). */
+@Composable
+fun BarisJudulPemutar(
+    judul: String,
+    artis: String,
+    u: Dp,
+    ekor: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                judul, fontSize = (45f * u.value).sp, fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                artis, fontSize = (30f * u.value).sp,
+                color = Color.White.copy(alpha = 0.55f),
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        ekor()
+    }
+}
+
+/** Baris waktu: posisi berjalan (kiri) + sisa negatif (kanan). */
+@Composable
+fun BarisWaktuPemutar(kiri: String, kanan: String, u: Dp) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(
+            kiri, fontSize = (26f * u.value).sp,
+            color = Color.White.copy(alpha = 0.75f),
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            kanan, fontSize = (26f * u.value).sp,
+            color = Color.White.copy(alpha = 0.75f),
+        )
+    }
+}
+
+/**
+ * Baris transport PERSIS referensi: bintang (favorit) di kiri, lalu
+ * prev • jeda/putar • next — tengah ikonnya berjarak sama rata, jeda
+ * pas di tengah kartu. Sisi kanan sesudah next memang kosong di
+ * referensi, dibiarkan kosong.
+ */
+@Composable
+fun BarisTransportPemutar(
+    u: Dp,
+    favorit: Boolean,
+    onFavorit: () -> Unit,
+    onPrev: () -> Unit,
+    onPlayPause: () -> Unit,
+    muter: Boolean,
+    onNext: () -> Unit,
+    prevAktif: Boolean = true,
+    nextAktif: Boolean = true,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(u * 84),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Spacer(Modifier.width(u * 51))
+        Box(
+            Modifier.width(u * 64).fillMaxHeight().clickable(onClick = onFavorit),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (favorit) Icons.Filled.Star else Icons.Filled.StarBorder,
+                "Favorit",
+                tint = Color.White.copy(alpha = 0.92f),
+                modifier = Modifier.size(u * 62),
+            )
+        }
+        Spacer(Modifier.width(u * 69))
+        Box(
+            Modifier.width(u * 83).fillMaxHeight()
+                .clickable(enabled = prevAktif, onClick = onPrev),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.SkipPrevious, "Sebelumnya",
+                tint = Color.White.copy(alpha = if (prevAktif) 1f else 0.35f),
+                modifier = Modifier.size(u * 84),
+            )
+        }
+        Spacer(Modifier.width(u * 50))
+        Box(
+            Modifier.width(u * 100).fillMaxHeight().clickable(onClick = onPlayPause),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (muter) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                if (muter) "Jeda" else "Putar",
+                tint = Color.White,
+                modifier = Modifier.size(u * 96),
+            )
+        }
+        Spacer(Modifier.width(u * 51))
+        Box(
+            Modifier.width(u * 83).fillMaxHeight()
+                .clickable(enabled = nextAktif, onClick = onNext),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.SkipNext, "Berikutnya",
+                tint = Color.White.copy(alpha = if (nextAktif) 1f else 0.35f),
+                modifier = Modifier.size(u * 84),
+            )
+        }
+    }
+}
+
+/** Baris volume: ikon speaker kecil • bar pil 14u tanpa knob • ikon besar. */
+@Composable
+fun BarisVolumePemutar(
+    u: Dp,
+    fraksi: Float,
+    onGeser: (Float) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(u * 65), contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Filled.VolumeMute, null,
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(u * 54),
+            )
+        }
+        Spacer(Modifier.width(u * 8))
+        Box(Modifier.weight(1f)) {
+            BarGeserTipis(
+                fraksi = fraksi,
+                onGeser = onGeser,
+                onSelesai = {},
+                tinggi = u * 14,
+                knob = false,
+            )
+        }
+        Spacer(Modifier.width(u * 8))
+        Box(Modifier.width(u * 65), contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Filled.VolumeUp, null,
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(u * 54),
+            )
+        }
+    }
+}
+
+/** Pil output ala AirPlay di tengah bawah kartu. */
+@Composable
+fun PillOutputPemutar(u: Dp, nama: String, onKlik: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = Color.White.copy(alpha = 0.12f),
+        modifier = Modifier.clickable(onClick = onKlik),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = u * 36, vertical = u * 17),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.Cast, null,
+                tint = Color.White, modifier = Modifier.size(u * 40),
+            )
+            Spacer(Modifier.width(u * 12))
+            Text(
+                nama, color = Color.White, fontWeight = FontWeight.Medium,
+                fontSize = (35f * u.value).sp,
+            )
+        }
+    }
+}
+
 /** Latar pemutar: cover diblur (ngikut cover lagu) — cover kosong = gradasi warna, BUKAN hitam polos. */
 @Composable
 private fun LatarPemutar(lagu: AudioItem?, versi: Int = 0) {
@@ -3840,6 +4057,7 @@ private fun LatarPemutar(lagu: AudioItem?, versi: Int = 0) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlayerScreen(
     vm: GalleryViewModel,
@@ -3870,106 +4088,71 @@ fun PlayerScreen(
         }.getOrDefault("Speaker")
     }
 
-    // Tarik ke bawah buat nutup pemutar (kayak sheet iOS): konten ngikutin
-    // jari; lepas di atas 260px -> tutup, di bawah itu mental balik.
+    // Tarik ke bawah buat nutup pemutar: konten ngikutin jari; lepas di
+    // atas 260px -> tutup, di bawah itu mental balik.
     val tarikPemutar = remember { Animatable(0f) }
     val cakupanPemutar = rememberCoroutineScope()
-    // MELAYANG: akar transparan (layar di belakangnya = daftar lagu asli),
-    // lembaran pemutarnya dikasih jarak atas + sudut atas membulat + klip.
-    Box(
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        // Latar blur cover LAYAR PENUH dari tepi atas layar: dulu latar
-        // ini tinggal DI DALAM lembaran, di belakangnya peredup hitam 45%
-        // — bagian atas layar jadi kelihatan abu-abu (perintah user
-        // 2026-11-05: background pemutar harus full screen).
+    // MELAYANG PAS DI TENGAH LAYAR (perintah user 2026-11-10, ngikutin
+    // screenshot referensi): kartu kaca di tengah layar; DUA tombol
+    // pojok atas (turun + antrean) DIHAPUS total. Nutup pemutar =
+    // tombol Back sistem ATAU tarik ke bawah.
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Latar blur cover LAYAR PENUH dari tepi atas layar.
         LatarPemutar(lagu, vm.versiCover)
-      Box(
-        Modifier.fillMaxSize()
-            .graphicsLayer { translationY = tarikPemutar.value }
-            .padding(top = 14.dp)
-            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragEnd = {
-                        cakupanPemutar.launch {
-                            if (tarikPemutar.value > 260f) onBack()
-                            else tarikPemutar.animateTo(
-                                0f, spring(dampingRatio = 0.8f, stiffness = 380f),
-                            )
-                        }
-                    },
-                    onDragCancel = {
-                        cakupanPemutar.launch {
-                            tarikPemutar.animateTo(
-                                0f, spring(dampingRatio = 0.8f, stiffness = 380f),
-                            )
-                        }
-                    },
-                    onVerticalDrag = { change, dragAmount ->
-                        if (dragAmount > 0f || tarikPemutar.value > 0f) {
-                            change.consume()
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { translationY = tarikPemutar.value }
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = {
                             cakupanPemutar.launch {
-                                tarikPemutar.snapTo(
-                                    (tarikPemutar.value + dragAmount).coerceAtLeast(0f),
+                                if (tarikPemutar.value > 260f) onBack()
+                                else tarikPemutar.animateTo(
+                                    0f, spring(dampingRatio = 0.8f, stiffness = 380f),
                                 )
                             }
-                        }
-                    },
-                )
-            },
-      ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            // Bar atas tipis: tombol turun/tutup ala iOS
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.Filled.KeyboardArrowDown, "Tutup pemutar",
-                        tint = Color.White, modifier = Modifier.size(30.dp),
+                        },
+                        onDragCancel = {
+                            cakupanPemutar.launch {
+                                tarikPemutar.animateTo(
+                                    0f, spring(dampingRatio = 0.8f, stiffness = 380f),
+                                )
+                            }
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            if (dragAmount > 0f || tarikPemutar.value > 0f) {
+                                change.consume()
+                                cakupanPemutar.launch {
+                                    tarikPemutar.snapTo(
+                                        (tarikPemutar.value + dragAmount).coerceAtLeast(0f),
+                                    )
+                                }
+                            }
+                        },
                     )
-                }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = { vm.beriTahu("Antrean putar = isi folder yang dibuka") }) {
-                    Icon(Icons.Filled.QueueMusic, "Antrean", tint = Color.White.copy(alpha = 0.85f))
-                }
-            }
-
+                },
+            contentAlignment = Alignment.Center,
+        ) {
             if (lagu == null) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Belum ada lagu yang diputar", color = Color.White.copy(alpha = 0.7f))
-                }
-                return@Column
-            }
-
-            Spacer(Modifier.weight(0.85f))
-
-            // === KARTU KACA ala iOS — proporsi DIUKUR dari screenshot user:
-            // lebar kartu ±79% layar, radius ±30dp, cover inset ±18dp radius 12dp.
-            Surface(
-                shape = RoundedCornerShape(32.dp),
-                color = Color.Black.copy(alpha = 0.34f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.13f)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 34.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    // Cover inset
+                Text(
+                    "Belum ada lagu yang diputar",
+                    color = Color.White.copy(alpha = 0.7f),
+                )
+            } else {
+                var menuLainLagu by remember { mutableStateOf(false) }
+                var rincianLagu by remember { mutableStateOf(false) }
+                KartuKacaPemutar { u ->
+                    // Cover inset persegi penuh (ketuk = ganti cover,
+                    // kayak sebelumnya; lencana pensil DIHAPUS biar
+                    // persis referensi)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            // Latar SELALU gradasi cerah per lagu: artUri bisa
-                            // non-kosong tapi gambarnya tidak ada -> muat gagal
-                            // dan yg tampil ya latar ini (cover asli menutupi
-                            // penuh pas berhasil dimuat).
+                            .clip(RoundedCornerShape(u * 24))
                             .background(
                                 Brush.linearGradient(
                                     pasanganGradasiCerah(lagu.key).let { (a, b) -> listOf(a, b) },
@@ -3981,7 +4164,7 @@ fun PlayerScreen(
                         Icon(
                             Icons.Filled.MusicNote, null,
                             tint = Color.White.copy(alpha = 0.92f),
-                            modifier = Modifier.size(96.dp),
+                            modifier = Modifier.size(u * 240),
                         )
                         if (lagu.artUri != Uri.EMPTY) {
                             AsyncImage(
@@ -3996,54 +4179,28 @@ fun PlayerScreen(
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
-                        if (lagu.uri.scheme == "content") {
+                    }
+                    Spacer(Modifier.height(u * 52))
+                    // Judul + artis (kiri) • ikon gelombang kecil
+                    // (kanan). TAHAN ikon gelombang = menu lama (acak /
+                    // favorit / putar ulang / rincian) — visual kartu
+                    // tetap persis referensi, tanpa tombol titik tiga.
+                    BarisJudulPemutar(lagu.title, lagu.artist, u) {
+                        Box {
                             Box(
                                 Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(10.dp)
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f)),
+                                    .size(u * 64, u * 76)
+                                    .combinedClickable(
+                                        onClick = { vm.beriTahu("Lirik belum tersedia") },
+                                        onLongClick = { menuLainLagu = true },
+                                    ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    Icons.Filled.Edit, "Ganti cover",
-                                    tint = Color.White, modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(24.dp))
-                    var menuLainLagu by remember { mutableStateOf(false) }
-                    var rincianLagu by remember { mutableStateOf(false) }
-                    // Judul + artis (kiri) • ikon gelombang (kanan)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                lagu.title, fontSize = 19.sp, fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                lagu.artist, fontSize = 16.sp,
-                                color = Color.White.copy(alpha = 0.55f),
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        IconButton(onClick = { vm.beriTahu("Lirik belum tersedia") }) {
-                            Icon(
-                                Icons.Filled.GraphicEq, "Lirik",
-                                tint = Color.White.copy(alpha = 0.75f),
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { menuLainLagu = true }) {
-                                Icon(
-                                    Icons.Filled.MoreVert, "Lainnya",
-                                    tint = Color.White.copy(alpha = 0.75f),
+                                    Icons.Filled.GraphicEq,
+                                    "Lirik (tahan buat menu lainnya)",
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(u * 36),
                                 )
                             }
                             DropdownMenu(
@@ -4139,117 +4296,63 @@ fun PlayerScreen(
                             },
                         )
                     }
-                    Spacer(Modifier.height(14.dp))
-                    // Seekbar TIPIS custom + waktu berjalan / SISA (negatif)
+                    Spacer(Modifier.height(u * 48))
+                    // Bar durasi PIL GEMUK tanpa knob (bentuk persis
+                    // referensi) + waktu berjalan / SISA (negatif)
                     val durasiAman = vm.durasiLagu.coerceAtLeast(1)
                     val posisiKini = geser ?: vm.posisiLagu.toFloat()
+                    val geserKini by rememberUpdatedState(geser)
+                    val durasiKini by rememberUpdatedState(durasiAman)
                     BarGeserTipis(
                         fraksi = (posisiKini / durasiAman).coerceIn(0f, 1f),
-                        onGeser = { f -> geser = f * durasiAman },
+                        onGeser = { f -> geser = f * durasiKini },
                         onSelesai = {
-                            geser?.let { vm.cariLaguKe(it.toLong()) }
+                            geserKini?.let { vm.cariLaguKe(it.toLong()) }
                             geser = null
                         },
-                        tinggi = 5.dp,
-                        knob = true,
+                        tinggi = u * 17,
+                        knob = false,
                     )
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(
-                            formatDurasi(posisiKini.toLong()),
-                            fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f),
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            "-" + formatDurasi((vm.durasiLagu - posisiKini.toLong()).coerceAtLeast(0)),
-                            fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f),
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    // Transport: ⏮ • ⏯ • ⏭ DI TENGAH (perintah user);
-                    // acak/favorit/ulang pindah ke menu ⋮ di samping Lirik
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        IconButton(onClick = { vm.laguSebelum() }, modifier = Modifier.size(56.dp)) {
-                            Icon(
-                                Icons.Filled.SkipPrevious, "Sebelumnya",
-                                tint = Color.White, modifier = Modifier.size(40.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(28.dp))
-                        IconButton(onClick = { vm.toggleLagu() }, modifier = Modifier.size(72.dp)) {
-                            Icon(
-                                if (vm.muterLagu) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                if (vm.muterLagu) "Jeda" else "Putar",
-                                tint = Color.White, modifier = Modifier.size(56.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(28.dp))
-                        IconButton(onClick = { vm.laguBerikut() }, modifier = Modifier.size(56.dp)) {
-                            Icon(
-                                Icons.Filled.SkipNext, "Berikutnya",
-                                tint = Color.White, modifier = Modifier.size(40.dp),
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    // Volume pill GEMUK ala iOS (tanpa knob)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Filled.VolumeMute, null,
-                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(18.dp),
-                        )
-                        Box(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                            BarGeserTipis(
-                                fraksi = if (maksVolume > 0) volume / maksVolume else 0f,
-                                onGeser = { f ->
-                                    val vBaru = (f * maksVolume).toInt()
-                                    volume = vBaru.toFloat()
-                                    runCatching {
-                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vBaru, 0)
-                                    }
-                                },
-                                onSelesai = {},
-                                tinggi = 9.dp,
-                                knob = false,
-                            )
-                        }
-                        Icon(
-                            Icons.Filled.VolumeUp, null,
-                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    Spacer(Modifier.height(18.dp))
-                    // Pill output ala AirPlay ("iPhone" di screenshot)
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = Color.White.copy(alpha = 0.16f),
-                        modifier = Modifier.clickable {
-                            vm.beriTahu("Output suara: $namaOutput")
+                    Spacer(Modifier.height(u * 10))
+                    BarisWaktuPemutar(
+                        formatDurasi(posisiKini.toLong()),
+                        "-" + formatDurasi(
+                            (vm.durasiLagu - posisiKini.toLong()).coerceAtLeast(0),
+                        ),
+                        u,
+                    )
+                    Spacer(Modifier.height(u * 26))
+                    // Transport PERSIS referensi: bintang • prev • jeda • next
+                    BarisTransportPemutar(
+                        u = u,
+                        favorit = lagu.key in vm.favorites,
+                        onFavorit = { vm.toggleFavoritLagu(lagu) },
+                        onPrev = { vm.laguSebelum() },
+                        onPlayPause = { vm.toggleLagu() },
+                        muter = vm.muterLagu,
+                        onNext = { vm.laguBerikut() },
+                    )
+                    Spacer(Modifier.height(u * 62))
+                    // Bar volume pil tanpa knob, diapit ikon speaker
+                    BarisVolumePemutar(
+                        u = u,
+                        fraksi = if (maksVolume > 0) volume / maksVolume else 0f,
+                        onGeser = { f ->
+                            val vBaru = (f * maksVolume).toInt()
+                            volume = vBaru.toFloat()
+                            runCatching {
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vBaru, 0)
+                            }
                         },
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Filled.Cast, null,
-                                tint = Color.White, modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(Modifier.width(9.dp))
-                            Text(namaOutput, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                        }
+                    )
+                    Spacer(Modifier.height(u * 24))
+                    // Pil output ala AirPlay
+                    PillOutputPemutar(u, namaOutput) {
+                        vm.beriTahu("Output suara: $namaOutput")
                     }
                 }
             }
-            Spacer(Modifier.weight(1f))
         }
-      }
     }
 }
 

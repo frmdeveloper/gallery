@@ -171,6 +171,62 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Bangun MediaItem dari URI milik aplikasi lain (intent VIEW). */
+private fun buatItemDariUri(context: android.content.Context, uri: Uri): MediaItem {
+    val cr = context.contentResolver
+    var nama = "Media"
+    var ukuran = 0L
+    var lebar = 0
+    var tinggi = 0
+    var durasi = 0L
+    runCatching {
+        cr.query(
+            uri,
+            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE),
+            null, null, null,
+        )?.use { c ->
+            if (c.moveToFirst()) {
+                nama = c.getString(0)?.ifBlank { nama } ?: nama
+                ukuran = runCatching { c.getLong(1) }.getOrDefault(0L)
+            }
+        }
+    }
+    val mime = runCatching { cr.getType(uri) }.getOrNull() ?: ""
+    val video = mime.startsWith("video/")
+    runCatching {
+        if (video) {
+            val mmr = android.media.MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(context, uri)
+                lebar = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                tinggi = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                durasi = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            } finally {
+                mmr.release()
+            }
+        } else {
+            cr.openInputStream(uri)?.use { input ->
+                val opsi = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeStream(input, null, opsi)
+                lebar = opsi.outWidth
+                tinggi = opsi.outHeight
+            }
+        }
+    }
+    return MediaItem(
+        key = uri.toString(),
+        uri = uri,
+        name = nama,
+        mime = mime.ifBlank { if (video) "video/*" else "image/*" },
+        size = ukuran,
+        dateMillis = 0L,
+        isVideo = video,
+        durationMs = durasi,
+        width = lebar,
+        height = tinggi,
+    )
+}
+
 private sealed interface Screen {
     data object Timeline : Screen
     data object Albums : Screen
@@ -324,6 +380,61 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
     var selecting by remember { mutableStateOf(false) }
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
     val snackbar = remember { SnackbarHostState() }
+
+    // ---- Mode dari aplikasi lain: LIHAT (ACTION_VIEW) / PILIH (PICK / GET_CONTENT) ----
+    val aktivitas = context as? android.app.Activity
+    val intentAwal = remember { aktivitas?.intent }
+    val modePilih = intentAwal?.action == android.content.Intent.ACTION_PICK ||
+        intentAwal?.action == android.content.Intent.ACTION_GET_CONTENT
+    val pilihBanyak = modePilih &&
+        intentAwal?.getBooleanExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, false) == true
+    val uriLihat = if (intentAwal?.action == android.content.Intent.ACTION_VIEW) intentAwal.data else null
+    var modeLihatLuar by remember { mutableStateOf(false) }
+    var lihatSudahDibuka by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (modePilih) {
+            screen = Screen.Timeline
+            if (pilihBanyak) selecting = true
+        }
+    }
+
+    // VIEW: tunggu media lokal termuat; ketemu di pool -> buka dgn konteks
+    // daftarnya, gak ketemu -> viewer satu item dari URI asing itu.
+    LaunchedEffect(uriLihat, vm.media.size) {
+        val uri = uriLihat ?: return@LaunchedEffect
+        if (lihatSudahDibuka) return@LaunchedEffect
+        if (vm.media.isEmpty()) {
+            kotlinx.coroutines.delay(2500)
+            if (lihatSudahDibuka) return@LaunchedEffect
+        }
+        val cocok = vm.media.firstOrNull { it.uri.toString() == uri.toString() }
+        modeLihatLuar = true
+        lihatSudahDibuka = true
+        screen = if (cocok != null) {
+            Screen.Viewer(vm.media, vm.media.indexOf(cocok), Screen.Timeline)
+        } else {
+            val itemLuar = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                buatItemDariUri(context, uri)
+            }
+            Screen.Viewer(listOf(itemLuar), 0, Screen.Timeline)
+        }
+    }
+
+    fun selesaiPilih(daftar: List<MediaItem>) {
+        val act = aktivitas ?: return
+        if (daftar.isEmpty()) return
+        val hasil = android.content.Intent()
+        hasil.data = daftar.first().uri
+        if (daftar.size > 1) {
+            val clip = android.content.ClipData.newUri(context.contentResolver, "Galeri FRM", daftar.first().uri)
+            daftar.drop(1).forEach { clip.addItem(android.content.ClipData.Item(it.uri)) }
+            hasil.clipData = clip
+        }
+        hasil.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        act.setResult(android.app.Activity.RESULT_OK, hasil)
+        act.finish()
+    }
 
     // ---- Izin media ----
     val permissions = if (Build.VERSION.SDK_INT >= 33) {
@@ -580,6 +691,18 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
         (vm.media + vm.driveItems).filter { it.key in selection }
 
     fun onItemClick(sourceItems: List<MediaItem>, item: MediaItem) {
+        if (modePilih) {
+            if (item.isDrive) {
+                vm.beriTahu("Item Drive belum bisa dipilih dari aplikasi lain")
+                return
+            }
+            if (pilihBanyak) {
+                selection = if (item.key in selection) selection - item.key else selection + item.key
+            } else {
+                selesaiPilih(listOf(item))
+            }
+            return
+        }
         if (selecting) {
             selection = if (item.key in selection) selection - item.key else selection + item.key
         } else {
@@ -590,6 +713,10 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
         }
     }
     fun onItemLongClick(item: MediaItem) {
+        if (modePilih && !pilihBanyak) {
+            if (!item.isDrive) selesaiPilih(listOf(item))
+            return
+        }
         selecting = true
         selection = selection + item.key
     }
@@ -605,13 +732,18 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
     // DIMATIKAN: sekali kembali LANGSUNG KELUAR aplikasi — perintah user
     // 2026-11-05 (pola lama mampir Gambar dulu + tekan 2x DICABUT, karena
     // sekarang tab terakhir sudah diingat dan dipulihkan pas buka lagi).
-    val perluHandlerKembali = pemutarTerbuka || selecting || vm.loginMenunggu ||
+    val perluHandlerKembali = pemutarTerbuka || selecting || vm.loginMenunggu || modePilih ||
         screen is Screen.Viewer || screen is Screen.AlbumDetail ||
         screen is Screen.Sampah || screen is Screen.AudioFolder
     BackHandler(enabled = perluHandlerKembali) {
         val s = screen
         when {
             pemutarTerbuka -> pemutarTerbuka = false
+            modePilih -> {
+                aktivitas?.setResult(android.app.Activity.RESULT_CANCELED)
+                aktivitas?.finish()
+            }
+            modeLihatLuar && s is Screen.Viewer -> aktivitas?.finish()
             selecting -> closeSelecting()
             s is Screen.Viewer -> screen = s.from
             s is Screen.AlbumDetail -> screen = Screen.Albums
@@ -667,6 +799,7 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                         onShareSelected = { shareItems(context, selectedItems()) },
                         onDeleteSelected = { requestDelete(selectedItems()) },
                         onUploadSelected = { vm.uploadToDrive(selectedItems()) },
+                        sembunyikanKromPilih = modePilih,
                     )
                 }
             }
@@ -752,7 +885,7 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                     isFavorite = { vm.isFavorite(it) },
                     onToggleFavorite = { vm.toggleFavorite(it) },
                     onDelete = { item -> requestDelete(listOf(item), goBackAfter = true) },
-                    onBack = { screen = s.from },
+                    onBack = { if (modeLihatLuar) aktivitas?.finish() else screen = s.from },
                     videoSedangDiLatar = vm.videoDiLatar != null,
                     onSerahkanVideo = { videos, mulai, pos -> vm.serahkanVideoKeLatar(videos, mulai, pos) },
                     onAmbilAlihVideo = { vm.ambilAlihDariLatar() },
@@ -763,8 +896,8 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
         }
 
         // Tab bar mengambang ala Samsung — cuma di layar-layar utama
-        val showTabs = screen is Screen.Timeline || screen is Screen.Albums ||
-            screen is Screen.MenuTab || screen is Screen.Audio
+        val showTabs = !modePilih && (screen is Screen.Timeline || screen is Screen.Albums ||
+            screen is Screen.MenuTab || screen is Screen.Audio)
         // Mini player musik nempel di atas pill tab selama ada lagu dimuat;
         // di dalam folder audio juga tampil (di sana nggak ada pill tab,
         // jadi nempel bawah biasa)
@@ -789,6 +922,37 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                 contentAlignment = Alignment.Center,
             ) {
                 BottomPillBar(current = screen, onSelect = { screen = it })
+            }
+        }
+
+        // Bar penutup mode PILIH banyak (dari aplikasi lain)
+        if (modePilih && pilihBanyak) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shadowElevation = 6.dp,
+                ) {
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = {
+                            aktivitas?.setResult(android.app.Activity.RESULT_CANCELED)
+                            aktivitas?.finish()
+                        }) { Text("Batal") }
+                        Button(
+                            onClick = { selesaiPilih(selectedItems().filter { !it.isDrive }) },
+                            enabled = selection.isNotEmpty(),
+                        ) { Text("Selesai (${selection.size})") }
+                    }
+                }
             }
         }
 

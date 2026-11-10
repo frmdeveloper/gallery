@@ -30,6 +30,29 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Dibuka dari aplikasi lain buat LIHAT foto/video -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <!-- Dipilih dari aplikasi lain buat MEMILIH foto/video -->
+            <intent-filter>
+                <action android:name="android.intent.action.PICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
         </activity>
         <!-- Pemutar musik latar + notifikasi (MediaSessionService) -->
         <service
@@ -50,6 +73,16 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
+        </provider>
+        <!-- Penyedia media cloud buat Pemilih Foto sistem (album/media Drive) -->
+        <provider
+            android:name=".PenyediaCloud"
+            android:authorities="id.frmdeveloper.gallery.cloudmedia"
+            android:exported="true"
+            android:permission="com.android.providers.media.permission.MANAGE_CLOUD_MEDIA_PROVIDERS">
+            <intent-filter>
+                <action android:name="android.content.action.CLOUD_MEDIA_PROVIDER" />
+            </intent-filter>
         </provider>
     </application>
 
