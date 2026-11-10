@@ -16,6 +16,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -26,6 +30,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -160,8 +165,9 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             GaleriFRMTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
                     Box(Modifier.fillMaxSize()) {
+                        LatarKacaApp()
                         AppRoot()
                         LayarSplash()
                     }
@@ -255,39 +261,69 @@ private fun BottomPillBar(current: Screen, onSelect: (Screen) -> Unit) {
         TabDef(Screen.Audio, "Audio", Icons.Filled.MusicNote),
         TabDef(Screen.MenuTab, "Menu", Icons.Filled.Menu),
     )
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        shadowElevation = 10.dp,
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+    val gelap = gelapAktif()
+    val warnaPilih = if (gelap) BiruIosGelap else BiruIos
+    val indeksPilih = tabs.indexOfFirst { it.screen::class == current::class }.coerceAtLeast(0)
+    // Kapsul pilihan BERGESER halus ke tab yang dipencet (ala iOS), bukan
+    // muncul seketika / kilatan kotak — perintah user 2026-11-10 malam.
+    val geserKapsul by animateDpAsState(
+        targetValue = (86 * indeksPilih).dp,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 380f),
+        label = "kapsulTabGeser",
+    )
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 12.dp)
+            .kacaCair(RoundedCornerShape(34.dp), gelap, bayangan = 18.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            for (tab in tabs) {
-                val selected = current::class == tab.screen::class
-                Box(
-                    modifier = Modifier
-                        .width(84.dp)
-                        .height(48.dp)
-                        .background(
-                            if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                            RoundedCornerShape(24.dp),
-                        )
-                        .clickable { onSelect(tab.screen) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            tab.icon, contentDescription = tab.label,
-                            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            tab.label, fontSize = 10.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+        Box(Modifier.padding(horizontal = 6.dp, vertical = 5.dp)) {
+            // Kapsul kaca yang bergeser di belakang item terpilih
+            Box(
+                modifier = Modifier
+                    .offset(x = geserKapsul)
+                    .width(84.dp)
+                    .height(52.dp)
+                    .background(
+                        if (gelap) Color.White.copy(alpha = 0.20f)
+                        else Color.White.copy(alpha = 0.88f),
+                        RoundedCornerShape(26.dp),
+                    )
+                    .border(
+                        1.dp,
+                        Color.White.copy(alpha = if (gelap) 0.28f else 0.75f),
+                        RoundedCornerShape(26.dp),
+                    ),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                for (tab in tabs) {
+                    val selected = current::class == tab.screen::class
+                    val sumberInteraksi = remember { MutableInteractionSource() }
+                    Box(
+                        modifier = Modifier
+                            .width(84.dp)
+                            .height(52.dp)
+                            // indication = null: tanpa kilatan kotak pas
+                            // dipencet; umpan baliknya kapsul yang bergeser.
+                            .clickable(
+                                interactionSource = sumberInteraksi,
+                                indication = null,
+                            ) { onSelect(tab.screen) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                tab.icon, contentDescription = tab.label,
+                                tint = if (selected) warnaPilih
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(23.dp),
+                            )
+                            Text(
+                                tab.label, fontSize = 10.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (selected) warnaPilih
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -320,9 +356,9 @@ private fun LayarSplash() {
     Box(
         Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = alphaKeluar }
-            .background(Color.White),
+            .graphicsLayer { alpha = alphaKeluar },
     ) {
+        LatarKacaApp()
         Image(
             painter = painterResource(R.drawable.ic_launcher_art),
             contentDescription = null,
@@ -934,10 +970,11 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                     .padding(bottom = 16.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Surface(
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shadowElevation = 6.dp,
+                Box(
+                    Modifier.kacaCair(
+                        androidx.compose.foundation.shape.RoundedCornerShape(50),
+                        gelapAktif(), bayangan = 12.dp,
+                    ),
                 ) {
                     androidx.compose.foundation.layout.Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),

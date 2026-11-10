@@ -29,6 +29,33 @@ Samsung code.
   and USB drives, in the same layout as the Drive accounts
 - **In-app updates**: checks GitHub releases and installs the new APK
   directly
+- **Liquid Glass theme**: iOS-style frosted glass surfaces over a soft
+  mesh gradient, with a floating glass tab bar
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/01-splash.jpg" width="250" alt="Splash screen" /><br /><sub>Splash screen</sub></td>
+    <td align="center"><img src="docs/screenshots/02-menu.jpg" width="250" alt="Menu" /><br /><sub>Menu</sub></td>
+    <td align="center"><img src="docs/screenshots/08-albums-grid.jpg" width="250" alt="Albums, grid view" /><br /><sub>Albums · grid</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/07-albums-list.jpg" width="250" alt="Albums, list view" /><br /><sub>Albums · list</sub></td>
+    <td align="center"><img src="docs/screenshots/09-album-panel.jpg" width="250" alt="Album with the swipe side panel" /><br /><sub>Album · side panel</sub></td>
+    <td align="center"><img src="docs/screenshots/10-photo-viewer.jpg" width="250" alt="Photo viewer" /><br /><sub>Photo viewer</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/03-audio-folders-grid.jpg" width="250" alt="Audio folders, grid view" /><br /><sub>Audio folders · grid</sub></td>
+    <td align="center"><img src="docs/screenshots/04-audio-folders-list.jpg" width="250" alt="Audio folders, list view" /><br /><sub>Audio folders · list</sub></td>
+    <td align="center"><img src="docs/screenshots/05-audio-tracks.jpg" width="250" alt="Track list with the mini player" /><br /><sub>Tracks &amp; mini player</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/06-music-player.jpg" width="250" alt="Music player" /><br /><sub>Music player</sub></td>
+    <td align="center"><img src="docs/screenshots/11-video-preview.jpg" width="250" alt="Video preview" /><br /><sub>Video preview</sub></td>
+    <td align="center"><img src="docs/screenshots/12-video-player.jpg" width="250" alt="Video player" /><br /><sub>Video player</sub></td>
+  </tr>
+</table>
 
 ## Building
 

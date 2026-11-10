@@ -134,6 +134,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -551,7 +552,7 @@ fun MediaGrid(
                                         cornerRadius = CornerRadius(10.dp.toPx()),
                                     )
                                     drawRoundRect(
-                                        color = Color(0xFF0381FE),
+                                        color = Color(0xFF007AFF),
                                         cornerRadius = CornerRadius(10.dp.toPx()),
                                         style = Stroke(width = 2.dp.toPx()),
                                     )
@@ -789,8 +790,7 @@ fun KromPilihMengambang(
             Row(
                 Modifier
                     .height(40.dp)
-                    .shadow(4.dp, CircleShape)
-                    .background(Color.White, CircleShape)
+                    .kacaCair(CircleShape, gelap = false, bayangan = 6.dp)
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -808,8 +808,7 @@ fun KromPilihMengambang(
             Box(
                 Modifier
                     .height(40.dp)
-                    .shadow(4.dp, CircleShape)
-                    .background(Color.White, CircleShape)
+                    .kacaCair(CircleShape, gelap = false, bayangan = 6.dp)
                     .clickable(onClick = onClose)
                     .padding(horizontal = 18.dp),
                 contentAlignment = Alignment.Center,
@@ -849,8 +848,7 @@ fun KromPilihMengambang(
                     .padding(bottom = 80.dp)
                     .fillMaxWidth(0.8f)
                     .widthIn(max = 340.dp)
-                    .shadow(12.dp, RoundedCornerShape(28.dp))
-                    .background(Color.White, RoundedCornerShape(28.dp))
+                    .kacaCair(RoundedCornerShape(28.dp), gelap = false, bayangan = 14.dp)
                     .padding(vertical = 10.dp),
             ) {
                 ItemMenuLainnya("Salin ke clipboard") { menuLainnya = false; onSalinClipboard() }
@@ -875,8 +873,7 @@ fun KromPilihMengambang(
             Modifier
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp)
-                .shadow(8.dp, CircleShape)
-                .background(Color.White, CircleShape)
+                .kacaCair(CircleShape, gelap = false, bayangan = 10.dp)
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1022,6 +1019,7 @@ fun TimelineScreen(
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
                 title = {
                     Text(
                         albumTerpilih?.name ?: "Gambar", fontWeight = FontWeight.Bold,
@@ -1274,7 +1272,10 @@ private fun PanelAlbum(
             Modifier
                 .width(lebarRel)
                 .fillMaxHeight()
-                .background(Color.White),
+                .kacaCair(
+                    RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
+                    gelap = false, bayangan = 8.dp,
+                ),
         ) {
             LazyColumn(
                 Modifier.fillMaxSize(),
@@ -1314,7 +1315,7 @@ private fun BarisSemuaFotoPanel(totalFoto: Int, terpilih: Boolean, onClick: () -
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .then(
                     if (terpilih) {
-                        Modifier.border(2.dp, Color(0xFF0381FE), RoundedCornerShape(8.dp))
+                        Modifier.border(2.dp, Color(0xFF007AFF), RoundedCornerShape(8.dp))
                     } else {
                         Modifier
                     }
@@ -1416,7 +1417,7 @@ private fun BarisAlbumPanel(
                             2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)
                         )
                         terpilih -> Modifier.border(
-                            2.dp, Color(0xFF0381FE), RoundedCornerShape(8.dp)
+                            2.dp, Color(0xFF007AFF), RoundedCornerShape(8.dp)
                         )
                         else -> Modifier
                     }
@@ -1650,6 +1651,7 @@ fun AlbumsScreen(
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
             title = { Text("Album", fontWeight = FontWeight.Bold) },
             actions = {
                 IconButton(onClick = { mencari = !mencari; if (!mencari) query = "" }) {
@@ -1856,6 +1858,7 @@ fun AlbumDetailScreen(
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
                 title = { Text(albumAktif.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -2019,7 +2022,7 @@ fun AlbumDetailScreen(
 
 private val WarnaLatarMenu = Color(0xFFF1F1F3)
 private val WarnaLabelSeksi = Color(0xFF76767A)
-private val WarnaBiruTautan = Color(0xFF1976D2)
+private val WarnaBiruTautan = Color(0xFF007AFF)
 private val WarnaTeksMenu = Color(0xFF191919)
 private val WarnaSubMenu = Color(0xFF8A8A8E)
 private val WarnaIkonMenu = Color(0xFF48484A)
@@ -2039,9 +2042,8 @@ private fun KartuMenu(isi: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.White),
+            .padding(horizontal = 12.dp)
+            .kacaCair(RoundedCornerShape(26.dp), gelap = false, bayangan = 10.dp),
         content = isi,
     )
 }
@@ -2051,7 +2053,7 @@ private fun KartuMenu(isi: @Composable ColumnScope.() -> Unit) {
 private fun PemisahMenu() {
     HorizontalDivider(
         thickness = 1.dp,
-        color = Color(0xFFE3E3E5),
+        color = Color(0xFF3C3C43).copy(alpha = 0.10f),
         modifier = Modifier.padding(start = 60.dp),
     )
 }
@@ -2265,7 +2267,7 @@ fun MenuScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(WarnaLatarMenu)
+            .background(Color.Transparent)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState()),
     ) {
@@ -2447,7 +2449,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Source GitHub",
-                sub = "Galeri FRM 1.82",
+                sub = "Galeri FRM 1.85",
                 onClick = {
                     runCatching {
                         ctxMenu.startActivity(
@@ -2625,6 +2627,7 @@ fun TrashScreen(
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
             title = { Text("Sampah", fontWeight = FontWeight.Bold) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
@@ -2972,6 +2975,7 @@ fun AudioScreen(
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
             title = { Text("Audio", fontWeight = FontWeight.Bold) },
             actions = {
                 Text(
@@ -3250,8 +3254,7 @@ fun KromPilihLaguMengambang(
                 Row(
                     Modifier
                         .height(40.dp)
-                        .shadow(4.dp, CircleShape)
-                        .background(Color.White, CircleShape)
+                        .kacaCair(CircleShape, gelap = false, bayangan = 6.dp)
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -3269,8 +3272,7 @@ fun KromPilihLaguMengambang(
                 Box(
                     Modifier
                         .height(40.dp)
-                        .shadow(4.dp, CircleShape)
-                        .background(Color.White, CircleShape)
+                        .kacaCair(CircleShape, gelap = false, bayangan = 6.dp)
                         .clickable(onClick = onClose)
                         .padding(horizontal = 18.dp),
                     contentAlignment = Alignment.Center,
@@ -3310,8 +3312,7 @@ fun KromPilihLaguMengambang(
                     .padding(bottom = 156.dp)
                     .fillMaxWidth(0.8f)
                     .widthIn(max = 340.dp)
-                    .shadow(12.dp, RoundedCornerShape(28.dp))
-                    .background(Color.White, RoundedCornerShape(28.dp))
+                    .kacaCair(RoundedCornerShape(28.dp), gelap = false, bayangan = 14.dp)
                     .padding(vertical = 10.dp),
             ) {
                 if (bisaUbahSampul) {
@@ -3334,8 +3335,7 @@ fun KromPilihLaguMengambang(
                 Modifier
                     .navigationBarsPadding()
                     .padding(bottom = 84.dp)
-                    .shadow(8.dp, CircleShape)
-                    .background(Color.White, CircleShape)
+                    .kacaCair(CircleShape, gelap = false, bayangan = 10.dp)
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -3438,7 +3438,7 @@ fun BarisLagu(
                         .size(20.dp)
                         .then(
                             if (terpilih) {
-                                Modifier.background(Color(0xFF0381FE), CircleShape)
+                                Modifier.background(Color(0xFF007AFF), CircleShape)
                             } else {
                                 Modifier
                                     .background(Color.White, CircleShape)
@@ -3549,6 +3549,7 @@ fun AudioTracksScreen(
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
             title = {
                 Text(
                     folderKini.name, fontWeight = FontWeight.Bold,
@@ -3672,13 +3673,14 @@ fun MiniPlayerBar(
     onOpenPlayer: () -> Unit,
 ) {
     val lagu = vm.laguDimainkan ?: return
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        shadowElevation = 8.dp,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .kacaCair(RoundedCornerShape(30.dp), gelapAktif(), bayangan = 14.dp),
     ) {
         Row(
-            modifier = Modifier.clickable(onClick = onOpenPlayer).padding(8.dp),
+            modifier = Modifier.clickable(onClick = onOpenPlayer).padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SampulLagu(lagu, 48.dp, versi = vm.versiCover)
@@ -3797,6 +3799,11 @@ fun KartuKacaPemutar(
 ) {
     BoxWithConstraints(modifier.fillMaxWidth(0.78f)) {
         val u = maxWidth / 840f
+        // Persis v1.82 (perintah user 2026-11-10 malam "balikin kayak
+        // tadi 1.82 card nya"): Surface hitam rata 0.34 + border putih
+        // 0.13. Versi Liquid Glass (gradasi kacaCairHitam sampai 0.55)
+        // kerasa makin gelap di mata user, jadi kartu ini dikecualikan
+        // dari kaca baru.
         Surface(
             shape = RoundedCornerShape(u * 80),
             color = Color.Black.copy(alpha = 0.34f),

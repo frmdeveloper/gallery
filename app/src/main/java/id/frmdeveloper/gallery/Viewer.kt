@@ -305,11 +305,8 @@ private fun TombolKaca(
     enabled: Boolean = true,
     konten: @Composable () -> Unit,
 ) {
-    Surface(
-        shape = CircleShape,
-        color = Color.White.copy(alpha = 0.16f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
-        modifier = modifier.size(ukuran),
+    Box(
+        modifier = modifier.size(ukuran).kacaCairHitam(CircleShape, bayangan = 8.dp),
     ) {
         IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxSize()) {
             konten()
@@ -346,11 +343,8 @@ private fun PratinjauKontrol(
                 .padding(bottom = 71.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF45484D),
-                    shadowElevation = 4.dp,
-                    modifier = Modifier.size(46.dp),
+                Box(
+                    modifier = Modifier.size(46.dp).kacaCairHitam(CircleShape, bayangan = 6.dp),
                 ) {
                     IconButton(onClick = onTogglePutar) {
                         Icon(
@@ -360,11 +354,8 @@ private fun PratinjauKontrol(
                         )
                     }
                 }
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF45484D),
-                    shadowElevation = 4.dp,
-                    modifier = Modifier.size(46.dp),
+                Box(
+                    modifier = Modifier.size(46.dp).kacaCairHitam(CircleShape, bayangan = 6.dp),
                 ) {
                     IconButton(onClick = onBukaPlayer) {
                         Icon(
@@ -373,11 +364,8 @@ private fun PratinjauKontrol(
                         )
                     }
                 }
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF45484D),
-                    shadowElevation = 4.dp,
-                    modifier = Modifier.size(46.dp),
+                Box(
+                    modifier = Modifier.size(46.dp).kacaCairHitam(CircleShape, bayangan = 6.dp),
                 ) {
                     IconButton(onClick = onToggleBisu) {
                         Icon(
@@ -853,15 +841,13 @@ private fun VideoPage(
             }
 
             // ---- Bawah: SATU kapsul kaca — waktu + seek + baris aksi ----
-            Surface(
-                shape = RoundedCornerShape(26.dp),
-                color = Color.White.copy(alpha = 0.14f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .kacaCairHitam(RoundedCornerShape(26.dp), bayangan = 14.dp),
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1361,7 +1347,11 @@ private fun FastOption(icon: ImageVector, label: String, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = label, modifier = Modifier.size(25.dp))
+        Icon(
+            icon, contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(25.dp),
+        )
     }
 }
 
@@ -1512,7 +1502,7 @@ private fun PanelRincian(
     Box(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .nestedScroll(koneksiTarik),
     ) {
     Column(
@@ -1954,13 +1944,11 @@ fun ViewerScreen(
                 exit = fadeOut(tween(180)),
                 modifier = Modifier.align(Alignment.TopStart),
             ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 6.dp,
+            Box(
                 modifier = Modifier
                     .statusBarsPadding()
-                    .padding(start = 14.dp, top = 10.dp),
+                    .padding(start = 14.dp, top = 10.dp)
+                    .kacaCair(CircleShape, gelapAktif(), bayangan = 10.dp),
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
@@ -1982,13 +1970,11 @@ fun ViewerScreen(
                         slideOutVertically(tween(240)) { it / 2 },
                     modifier = Modifier.align(Alignment.BottomCenter),
                 ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 8.dp,
+                Box(
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(bottom = 10.dp),
+                        .padding(bottom = 10.dp)
+                        .kacaCair(RoundedCornerShape(50), gelapAktif(), bayangan = 14.dp),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
