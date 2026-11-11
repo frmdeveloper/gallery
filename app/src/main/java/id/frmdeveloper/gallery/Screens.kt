@@ -52,10 +52,12 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -157,7 +159,11 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
@@ -169,6 +175,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -188,11 +195,17 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import coil.size.Precision
 import kotlinx.coroutines.Dispatchers
@@ -212,6 +225,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.filled.Storage
@@ -720,15 +736,15 @@ private fun ItemBarPilih(ikon: ImageVector, label: String, onClick: () -> Unit) 
             .padding(vertical = 7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(ikon, label, tint = Color(0xFF191919), modifier = Modifier.size(21.dp))
-        Text(label, fontSize = 10.sp, color = Color(0xFF191919))
+        Icon(ikon, label, tint = warnaDiKaca(), modifier = Modifier.size(21.dp))
+        Text(label, fontSize = 10.sp, color = warnaDiKaca())
     }
 }
 
 @Composable
 private fun ItemMenuLainnya(teks: String, onClick: () -> Unit) {
     Text(
-        teks, fontSize = 15.sp, color = Color(0xFF191919),
+        teks, fontSize = 15.sp, color = warnaDiKaca(),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
@@ -790,32 +806,32 @@ fun KromPilihMengambang(
             Row(
                 Modifier
                     .height(40.dp)
-                    .kacaCair(CircleShape, gelap = false, bayangan = 6.dp)
+                    .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    Icons.Outlined.Circle, null, tint = Color(0xFF191919),
+                    Icons.Outlined.Circle, null, tint = warnaDiKaca(),
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     "$count", fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                    color = Color(0xFF191919),
+                    color = warnaDiKaca(),
                 )
             }
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier
                     .height(40.dp)
-                    .kacaCair(CircleShape, gelap = false, bayangan = 6.dp)
+                    .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
                     .clickable(onClick = onClose)
                     .padding(horizontal = 18.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     "Batal", fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                    color = Color(0xFF191919),
+                    color = warnaDiKaca(),
                 )
             }
         }
@@ -848,7 +864,7 @@ fun KromPilihMengambang(
                     .padding(bottom = 80.dp)
                     .fillMaxWidth(0.8f)
                     .widthIn(max = 340.dp)
-                    .kacaCair(RoundedCornerShape(28.dp), gelap = false, bayangan = 14.dp)
+                    .kacaCair(RoundedCornerShape(28.dp), gelap = gelapAktif(), bayangan = 14.dp)
                     .padding(vertical = 10.dp),
             ) {
                 ItemMenuLainnya("Salin ke clipboard") { menuLainnya = false; onSalinClipboard() }
@@ -873,7 +889,7 @@ fun KromPilihMengambang(
             Modifier
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp)
-                .kacaCair(CircleShape, gelap = false, bayangan = 10.dp)
+                .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 10.dp)
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -2027,11 +2043,31 @@ private val WarnaTeksMenu = Color(0xFF191919)
 private val WarnaSubMenu = Color(0xFF8A8A8E)
 private val WarnaIkonMenu = Color(0xFF48484A)
 
+/** Warna teks/ikon di atas kaca melayang — ngikutin tema: gelap di mode
+ * terang, putih cerah di mode gelap (perintah user 2026-11-11: popup &
+ * Menu mode gelap teksnya harus cerah, bukan hitam hardcode). */
+@Composable
+fun warnaDiKaca(): Color = if (gelapAktif()) Color.White else Color(0xFF191919)
+
+/** Warna Menu ngikutin tema (dulu hardcode gaya terang -> berantakan di
+ * mode gelap). PanelAlbum tetap pakai konstanta terang di atas. */
+@Composable
+private fun warnaTeksMenu(): Color = MaterialTheme.colorScheme.onSurface
+
+@Composable
+private fun warnaSubMenu(): Color = MaterialTheme.colorScheme.onSurfaceVariant
+
+@Composable
+private fun warnaIkonMenu(): Color = MaterialTheme.colorScheme.onSurfaceVariant
+
+@Composable
+private fun warnaBiruMenu(): Color = if (gelapAktif()) BiruIosGelap else BiruIos
+
 @Composable
 private fun LabelSeksi(teks: String) {
     Text(
         teks,
-        color = WarnaLabelSeksi,
+        color = warnaSubMenu(),
         fontSize = 13.sp,
         modifier = Modifier.padding(start = 26.dp, top = 22.dp, bottom = 8.dp),
     )
@@ -2043,7 +2079,7 @@ private fun KartuMenu(isi: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
-            .kacaCair(RoundedCornerShape(26.dp), gelap = false, bayangan = 10.dp),
+            .kacaCair(RoundedCornerShape(26.dp), gelap = gelapAktif(), bayangan = 10.dp),
         content = isi,
     )
 }
@@ -2076,11 +2112,11 @@ private fun BarisMenu(
         Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) { ikon() }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(judul, color = WarnaTeksMenu, fontSize = 16.sp)
+            Text(judul, color = warnaTeksMenu(), fontSize = 16.sp)
             if (sub != null) {
                 Text(
                     sub,
-                    color = if (subBiru) WarnaBiruTautan else WarnaSubMenu,
+                    color = if (subBiru) warnaBiruMenu() else warnaSubMenu(),
                     fontSize = 13.sp,
                 )
             }
@@ -2273,7 +2309,7 @@ fun MenuScreen(
     ) {
         Text(
             "Menu",
-            color = WarnaTeksMenu,
+            color = warnaTeksMenu(),
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 24.dp, top = 20.dp, bottom = 2.dp),
@@ -2324,7 +2360,7 @@ fun MenuScreen(
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(akun.email, color = WarnaBiruTautan, fontSize = 16.sp)
+                            Text(akun.email, color = warnaBiruMenu(), fontSize = 16.sp)
                             val q = vm.kuotaDrive[akun.email]
                             Text(
                                 when {
@@ -2332,7 +2368,7 @@ fun MenuScreen(
                                     q.first > 0L -> "Sisa ${formatUkuranBerkas((q.first - q.second).coerceAtLeast(0L))} dari ${formatUkuranBerkas(q.first)}"
                                     else -> "Terpakai ${formatUkuranBerkas(q.second)}"
                                 },
-                                color = WarnaSubMenu, fontSize = 13.sp,
+                                color = warnaSubMenu(), fontSize = 13.sp,
                             )
                         }
                     }
@@ -2347,7 +2383,7 @@ fun MenuScreen(
                 ) {
                     Icon(
                         Icons.Filled.Add, "Tambah akun",
-                        tint = WarnaIkonMenu, modifier = Modifier.size(24.dp),
+                        tint = warnaIkonMenu(), modifier = Modifier.size(24.dp),
                     )
                 }
                 if (vm.driveLoading) {
@@ -2378,7 +2414,7 @@ fun MenuScreen(
             ) {
                 Icon(
                     Icons.Filled.Favorite, null,
-                    tint = WarnaIkonMenu, modifier = Modifier.size(22.dp),
+                    tint = warnaIkonMenu(), modifier = Modifier.size(22.dp),
                 )
             }
             PemisahMenu()
@@ -2389,7 +2425,7 @@ fun MenuScreen(
             ) {
                 Icon(
                     Icons.Filled.Delete, null,
-                    tint = WarnaIkonMenu, modifier = Modifier.size(22.dp),
+                    tint = warnaIkonMenu(), modifier = Modifier.size(22.dp),
                 )
             }
             if (vm.daftarAkunDrive.isNotEmpty()) {
@@ -2401,7 +2437,7 @@ fun MenuScreen(
                 ) {
                     Icon(
                         Icons.Filled.Refresh, null,
-                        tint = WarnaIkonMenu, modifier = Modifier.size(22.dp),
+                        tint = warnaIkonMenu(), modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -2428,15 +2464,15 @@ fun MenuScreen(
                                     "usb" -> Icons.Filled.Usb
                                     else -> Icons.Filled.Storage
                                 },
-                                null, tint = WarnaIkonMenu, modifier = Modifier.size(24.dp),
+                                null, tint = warnaIkonMenu(), modifier = Modifier.size(24.dp),
                             )
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(vol.nama, color = WarnaTeksMenu, fontSize = 16.sp)
+                            Text(vol.nama, color = warnaTeksMenu(), fontSize = 16.sp)
                             Text(
                                 "Sisa ${formatUkuranBerkas(vol.bebas)} dari ${formatUkuranBerkas(vol.total)}",
-                                color = WarnaSubMenu, fontSize = 13.sp,
+                                color = warnaSubMenu(), fontSize = 13.sp,
                             )
                         }
                     }
@@ -2449,7 +2485,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Source GitHub",
-                sub = "Galeri FRM 1.85",
+                sub = "Galeri FRM 1.91",
                 onClick = {
                     runCatching {
                         ctxMenu.startActivity(
@@ -2463,7 +2499,7 @@ fun MenuScreen(
             ) {
                 Icon(
                     Icons.Filled.Code, null,
-                    tint = WarnaIkonMenu, modifier = Modifier.size(22.dp),
+                    tint = warnaIkonMenu(), modifier = Modifier.size(22.dp),
                 )
             }
             PemisahMenu()
@@ -2482,7 +2518,7 @@ fun MenuScreen(
                 } else {
                     Icon(
                         Icons.Filled.Update, null,
-                        tint = WarnaIkonMenu, modifier = Modifier.size(22.dp),
+                        tint = warnaIkonMenu(), modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -2500,7 +2536,7 @@ fun MenuScreen(
             Spacer(Modifier.height(6.dp))
             Text(
                 "By Fauzan Rifki Maulana",
-                color = WarnaSubMenu, fontSize = 12.sp,
+                color = warnaSubMenu(), fontSize = 12.sp,
             )
         }
         Spacer(Modifier.height(28.dp))
@@ -2516,7 +2552,7 @@ fun MenuScreen(
                         Text(
                             "Semua akun Google yg terbaca di HP ini sudah masuk. " +
                                 "Akun lain tetap bisa ditambahkan:",
-                            color = WarnaSubMenu, fontSize = 13.sp,
+                            color = warnaSubMenu(), fontSize = 13.sp,
                         )
                         Spacer(Modifier.height(4.dp))
                     }
@@ -2533,10 +2569,10 @@ fun MenuScreen(
                         ) {
                             Icon(
                                 Icons.Filled.AccountCircle, null,
-                                tint = WarnaIkonMenu, modifier = Modifier.size(26.dp),
+                                tint = warnaIkonMenu(), modifier = Modifier.size(26.dp),
                             )
                             Spacer(Modifier.width(12.dp))
-                            Text(email, color = WarnaTeksMenu, fontSize = 15.sp)
+                            Text(email, color = warnaTeksMenu(), fontSize = 15.sp)
                         }
                     }
                     Row(
@@ -2551,12 +2587,12 @@ fun MenuScreen(
                     ) {
                         Icon(
                             Icons.Filled.Add, null,
-                            tint = WarnaIkonMenu, modifier = Modifier.size(26.dp),
+                            tint = warnaIkonMenu(), modifier = Modifier.size(26.dp),
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
                             "Akun lain (tidak ada di HP ini)…",
-                            color = WarnaTeksMenu, fontSize = 15.sp,
+                            color = warnaTeksMenu(), fontSize = 15.sp,
                         )
                     }
                 }
@@ -3254,32 +3290,32 @@ fun KromPilihLaguMengambang(
                 Row(
                     Modifier
                         .height(40.dp)
-                        .kacaCair(CircleShape, gelap = false, bayangan = 6.dp)
+                        .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        Icons.Outlined.Circle, null, tint = Color(0xFF191919),
+                        Icons.Outlined.Circle, null, tint = warnaDiKaca(),
                         modifier = Modifier.size(20.dp),
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         "$count", fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                        color = Color(0xFF191919),
+                        color = warnaDiKaca(),
                     )
                 }
                 Spacer(Modifier.weight(1f))
                 Box(
                     Modifier
                         .height(40.dp)
-                        .kacaCair(CircleShape, gelap = false, bayangan = 6.dp)
+                        .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
                         .clickable(onClick = onClose)
                         .padding(horizontal = 18.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         "Batal", fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                        color = Color(0xFF191919),
+                        color = warnaDiKaca(),
                     )
                 }
             }
@@ -3312,7 +3348,7 @@ fun KromPilihLaguMengambang(
                     .padding(bottom = 156.dp)
                     .fillMaxWidth(0.8f)
                     .widthIn(max = 340.dp)
-                    .kacaCair(RoundedCornerShape(28.dp), gelap = false, bayangan = 14.dp)
+                    .kacaCair(RoundedCornerShape(28.dp), gelap = gelapAktif(), bayangan = 14.dp)
                     .padding(vertical = 10.dp),
             ) {
                 if (bisaUbahSampul) {
@@ -3335,7 +3371,7 @@ fun KromPilihLaguMengambang(
                 Modifier
                     .navigationBarsPadding()
                     .padding(bottom = 84.dp)
-                    .kacaCair(CircleShape, gelap = false, bayangan = 10.dp)
+                    .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 10.dp)
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -3688,6 +3724,7 @@ fun MiniPlayerBar(
             Column(Modifier.weight(1f)) {
                 Text(
                     lagu.title, fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 Text(
@@ -3697,17 +3734,24 @@ fun MiniPlayerBar(
                 )
             }
             IconButton(onClick = { vm.laguSebelum() }) {
-                Icon(Icons.Filled.SkipPrevious, "Sebelumnya")
+                Icon(
+                    Icons.Filled.SkipPrevious, "Sebelumnya",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
             IconButton(onClick = { vm.toggleLagu() }) {
                 Icon(
                     if (vm.muterLagu) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     if (vm.muterLagu) "Jeda" else "Putar",
                     modifier = Modifier.size(32.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
             IconButton(onClick = { vm.laguBerikut() }) {
-                Icon(Icons.Filled.SkipNext, "Berikutnya")
+                Icon(
+                    Icons.Filled.SkipNext, "Berikutnya",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
             IconButton(onClick = { vm.tutupPemutar() }) {
                 Icon(
@@ -3820,6 +3864,152 @@ fun KartuKacaPemutar(
     }
 }
 
+/**
+ * Judul lagu BERJALAN menyambung (marquee mulus) — bentuk final dari
+ * perintah user 2026-11-11: teksnya jalan terus; UJUNG judul DISAMBUNG
+ * AWAL judul lagi (salinan kedua persis di belakangnya), dan tiap satu
+ * siklus penuh selesai -> DIEM 2 DETIK -> jalan lagi. Judul yang muat
+ * diam biasa.
+ */
+@Composable
+fun JudulBerjalan(teks: String, ukuranFont: TextUnit, modifier: Modifier = Modifier) {
+    val gaya = TextStyle(fontSize = ukuranFont, fontWeight = FontWeight.Bold, color = Color.White)
+    val pengukur = rememberTextMeasurer()
+    val hasil = remember(teks, ukuranFont) {
+        pengukur.measure(AnnotatedString(teks), style = gaya)
+    }
+    val lebarTeksPx = hasil.size.width
+    BoxWithConstraints(modifier.clipToBounds()) {
+        val nyambung = lebarTeksPx > constraints.maxWidth
+        val densitas = LocalDensity.current
+        if (!nyambung) {
+            Text(teks, style = gaya, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        } else {
+            // ULAR NOKIA (perintah user 2026-11-11): teks digambar di Canvas
+            // (BUKAN Row 2 salinan — di HP user kedua salinan malah NUMPUK
+            // gak kebaca). Kepala & ekor nyambung terus: salinan kedua
+            // digambar persis selebar-siklus di kanan salinan pertama.
+            // Pas kepala nyampe kiri (posisi awal) -> diem 2 detik -> jalan
+            // lagi satu siklus penuh -> balik ke awal tanpa lompatan.
+            val celahPx = with(densitas) { 48.dp.toPx() }
+            val siklusPx = lebarTeksPx + celahPx
+            val geser = remember { Animatable(0f) }
+            LaunchedEffect(teks, siklusPx) {
+                geser.snapTo(0f)
+                val kecepatan = with(densitas) { 45.dp.toPx() }
+                val durasiMs = (siklusPx / kecepatan * 1000f).toLong()
+                    .coerceIn(1500L, 25000L)
+                while (true) {
+                    delay(2000)
+                    geser.animateTo(
+                        -siklusPx.toFloat(),
+                        tween(durasiMs.toInt(), easing = LinearEasing),
+                    )
+                    geser.snapTo(0f)
+                }
+            }
+            Canvas(
+                Modifier
+                    .fillMaxWidth()
+                    .height(with(densitas) { hasil.size.height.toDp() }),
+            ) {
+                val x = geser.value
+                drawText(hasil, topLeft = Offset(x, 0f))
+                drawText(hasil, topLeft = Offset(x + siklusPx, 0f))
+            }
+        }
+    }
+}
+
+/**
+ * Spektrum mini ala iOS (waveform Apple Music, diukur dari screenshot
+ * referensi user): 6 batang TIPIS membulat yang tingginya simetris di
+ * TENGAH (bukan nongkrong di bawah kayak grafik batang), pola dasar
+ * [0.45, 0.28, 1.0, 0.95, 0.88, 0.45]. Pas muter, tiap batang berdenyut
+ * di sekitar pola dasarnya; pas jeda, diam persis glyph iOS-nya.
+ * (Versi pertama 5 batang nempel bawah dikoreksi user 2026-11-11:
+ * "bentuk spektrumnya kok beda, gak kayak di ios".)
+ */
+/**
+ * Izin RECORD_AUDIO buat spektrum live. [minta] true = langsung minta
+ * lewat dialog sistem pas belum dikasih (pemutar audio); false = cuma
+ * cek (mode musik video — dialognya cukup muncul di pemutar audio).
+ */
+@Composable
+fun ingatIzinSpektrum(minta: Boolean): Boolean {
+    val konteks = LocalContext.current
+    var izin by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                konteks, Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val peluncur = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { izin = it }
+    LaunchedEffect(minta) {
+        if (minta && !izin) peluncur.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    return izin
+}
+
+@Composable
+fun SpektrumBergerak(
+    modifier: Modifier = Modifier,
+    aktif: Boolean = true,
+    warna: Color = Color.White.copy(alpha = 0.85f),
+    live: Boolean = false,
+    sesiId: Int = 0,
+) {
+    val pola = listOf(0.45f, 0.28f, 1.00f, 0.95f, 0.88f, 0.45f)
+    val transisi = rememberInfiniteTransition(label = "spektrum")
+    val b1 by transisi.animateFloat(0.55f, 1.00f, infiniteRepeatable(tween(380, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "sb1")
+    val b2 by transisi.animateFloat(0.55f, 1.00f, infiniteRepeatable(tween(460, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "sb2")
+    val b3 by transisi.animateFloat(0.55f, 1.00f, infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "sb3")
+    val b4 by transisi.animateFloat(0.55f, 1.00f, infiniteRepeatable(tween(430, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "sb4")
+    val b5 by transisi.animateFloat(0.55f, 1.00f, infiniteRepeatable(tween(500, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "sb5")
+    val b6 by transisi.animateFloat(0.55f, 1.00f, infiniteRepeatable(tween(400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "sb6")
+    val denyut = if (aktif) listOf(b1, b2, b3, b4, b5, b6)
+        else listOf(1f, 1f, 1f, 1f, 1f, 1f)
+    // Spektrum LIVE: nempel ke sesi audio pas lagi muter; jeda/tutup ->
+    // mati. Sesi kadang belum siap pas pemutar baru kebuka -> coba lagi
+    // berkala sampai Visualizer beneran jalan (maks ~48 detik).
+    LaunchedEffect(live, sesiId, aktif) {
+        if (live && aktif && sesiId != 0) {
+            var percobaan = 0
+            while (!SpektrumLive.berjalan && percobaan < 40) {
+                SpektrumLive.mulai(sesiId)
+                if (SpektrumLive.berjalan) break
+                percobaan++
+                delay(1200)
+            }
+        } else {
+            SpektrumLive.berhenti()
+        }
+    }
+    DisposableEffect(Unit) { onDispose { SpektrumLive.berhenti() } }
+    Canvas(modifier) {
+        val liveAktif = live && SpektrumLive.berjalan
+        val lebarBatang = size.width * 0.10f
+        val celah = size.width * 0.08f
+        pola.forEachIndexed { i, dasar ->
+            val fraksi = when {
+                !aktif -> dasar
+                liveAktif -> SpektrumLive.level[i]
+                else -> dasar * denyut[i]
+            }
+            val h = (size.height * fraksi).coerceAtLeast(lebarBatang)
+            drawRoundRect(
+                color = warna,
+                topLeft = Offset(i * (lebarBatang + celah), (size.height - h) / 2f),
+                size = Size(lebarBatang, h),
+                cornerRadius = CornerRadius(lebarBatang / 2f, lebarBatang / 2f),
+            )
+        }
+    }
+}
+
 /** Baris judul + artis (kiri) dan [ekor] kecil di kanan (ikon gelombang). */
 @Composable
 fun BarisJudulPemutar(
@@ -3833,11 +4023,7 @@ fun BarisJudulPemutar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                judul, fontSize = (45f * u.value).sp, fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            JudulBerjalan(judul, (45f * u.value).sp, Modifier.fillMaxWidth())
             Text(
                 artis, fontSize = (30f * u.value).sp,
                 color = Color.White.copy(alpha = 0.55f),
@@ -4073,6 +4259,7 @@ fun PlayerScreen(
     val lagu = vm.laguDimainkan
     var geser by remember { mutableStateOf<Float?>(null) }
     val ctx = LocalContext.current
+    val izinSpektrum = ingatIzinSpektrum(minta = true)
     val audioManager = remember {
         ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
@@ -4203,11 +4390,11 @@ fun PlayerScreen(
                                     ),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Icon(
-                                    Icons.Filled.GraphicEq,
-                                    "Lirik (tahan buat menu lainnya)",
-                                    tint = Color.White.copy(alpha = 0.8f),
+                                SpektrumBergerak(
                                     modifier = Modifier.size(u * 36),
+                                    aktif = vm.muterLagu,
+                                    live = izinSpektrum,
+                                    sesiId = SesiVisual.idMusik,
                                 )
                             }
                             DropdownMenu(

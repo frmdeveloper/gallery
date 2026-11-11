@@ -38,7 +38,19 @@ class LayananMusik : MediaSessionService() {
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(buatFactoryStreaming(this)))
             .build()
+        // Sesi audio diterbitkan biar spektrum live (Visualizer) di UI
+        // bisa nempel ke suara player ini.
+        SesiVisual.idMusik = player.audioSessionId
         player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                // Sesi audio yang SEBENARNYA baru ketauan pas lagu mulai
+                // muter. Bacaan di onCreate terlalu dini (masih 0/UNSET)
+                // dan ke-cache selamanya -> spektrum live pemutar audio
+                // gak pernah nyala di v1.88/v1.89, sementara video jalan
+                // karena sesi player-nya dibaca pas udah muter.
+                SesiVisual.idMusik = audioSessionId
+            }
+
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 // Popup cuma pas lagu beneran muter & aplikasi lagi di latar.
                 // SYARATNYA playWhenReady, BUKAN isPlaying: pas transisi,

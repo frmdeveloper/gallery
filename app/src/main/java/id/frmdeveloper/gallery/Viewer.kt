@@ -974,6 +974,7 @@ private fun LayarModeMusikVideo(
     // tanpa stream/decoder tambahan. Pas video jeda, frame terakhir
     // tetap tampil (memang begitu seharusnya latar).
     val contextMusik = LocalContext.current
+    val izinSpektrumVideo = ingatIzinSpektrum(minta = false)
     var viewCover by remember { mutableStateOf<PlayerView?>(null) }
     // LATAR AMBIENT: thumbnail video diblur + zoom pelan bolak-balik.
     // Jepret frame LIVE dibuang: nyomot frame dari permukaan video yg
@@ -1175,10 +1176,11 @@ private fun LayarModeMusikVideo(
                                 .clickable { menuLainVideo = true },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                Icons.Filled.GraphicEq, "Menu lainnya",
-                                tint = Color.White.copy(alpha = 0.8f),
+                            SpektrumBergerak(
                                 modifier = Modifier.size(u * 36),
+                                aktif = muter,
+                                live = izinSpektrumVideo,
+                                sesiId = player.audioSessionId,
                             )
                         }
                         DropdownMenu(
