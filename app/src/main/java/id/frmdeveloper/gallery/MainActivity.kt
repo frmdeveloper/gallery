@@ -20,6 +20,13 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateDpAsState
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -167,8 +174,9 @@ class MainActivity : ComponentActivity() {
             GaleriFRMTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
                     Box(Modifier.fillMaxSize()) {
-                        LatarKacaApp()
-                        AppRoot()
+                        // Latar terekam: mesh digambar + direkam biar
+                        // elemen kaca bisa nyampel backdrop asli (v1.92).
+                        LatarKacaTerekam { AppRoot() }
                         LayarSplash()
                     }
                 }
@@ -264,35 +272,88 @@ private fun BottomPillBar(current: Screen, onSelect: (Screen) -> Unit) {
     val gelap = gelapAktif()
     val warnaPilih = if (gelap) BiruIosGelap else BiruIos
     val indeksPilih = tabs.indexOfFirst { it.screen::class == current::class }.coerceAtLeast(0)
-    // Kapsul pilihan BERGESER halus ke tab yang dipencet (ala iOS), bukan
-    // muncul seketika / kilatan kotak — perintah user 2026-11-10 malam.
-    val geserKapsul by animateDpAsState(
-        targetValue = (86 * indeksPilih).dp,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 380f),
-        label = "kapsulTabGeser",
+    // Posisi kapsul digerakkan Animatable (px): meluncur pakai spring
+    // pas tab dipilih (perintah 2026-11-10), dan sekarang bisa DISERET
+    // jari — kapsul ngikutin jari persis, pas dilepas nempel ke tab
+    // terdekat + tab itu kepilih (perintah user 2026-11-12 sore).
+    val langkahPx = with(LocalDensity.current) { 86.dp.toPx() }
+    val cakupanKapsul = rememberCoroutineScope()
+    val posisiKapsul = remember { Animatable(indeksPilih * langkahPx) }
+    var sedangSeret by remember { mutableStateOf(false) }
+    val indeksKini by rememberUpdatedState(indeksPilih)
+    val onSelectKini by rememberUpdatedState(onSelect)
+    // Squish gel pas nyeret: kapsul melebar dikit + memipih dikit.
+    val skalaKapsul by animateFloatAsState(
+        targetValue = if (sedangSeret) 1.06f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        label = "kapsulTabSkala",
     )
+    LaunchedEffect(indeksPilih) {
+        if (!sedangSeret) {
+            posisiKapsul.animateTo(
+                indeksPilih * langkahPx,
+                spring(dampingRatio = 0.75f, stiffness = 380f),
+            )
+        }
+    }
     Box(
         modifier = Modifier
             .padding(horizontal = 10.dp, vertical = 12.dp)
             .kacaCair(RoundedCornerShape(34.dp), gelap, bayangan = 18.dp),
     ) {
-        Box(Modifier.padding(horizontal = 6.dp, vertical = 5.dp)) {
-            // Kapsul kaca yang bergeser di belakang item terpilih
+        Box(
+            Modifier
+                .padding(horizontal = 6.dp, vertical = 5.dp)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            sedangSeret = true
+                            cakupanKapsul.launch { posisiKapsul.stop() }
+                        },
+                        onDragEnd = {
+                            sedangSeret = false
+                            val target = (posisiKapsul.value / langkahPx)
+                                .roundToInt().coerceIn(0, tabs.size - 1)
+                            cakupanKapsul.launch {
+                                posisiKapsul.animateTo(
+                                    target * langkahPx,
+                                    spring(dampingRatio = 0.75f, stiffness = 380f),
+                                )
+                            }
+                            if (target != indeksKini) onSelectKini(tabs[target].screen)
+                        },
+                        onDragCancel = {
+                            sedangSeret = false
+                            cakupanKapsul.launch {
+                                posisiKapsul.animateTo(
+                                    indeksKini * langkahPx,
+                                    spring(dampingRatio = 0.75f, stiffness = 380f),
+                                )
+                            }
+                        },
+                        onHorizontalDrag = { _, jumlah ->
+                            cakupanKapsul.launch {
+                                posisiKapsul.snapTo(
+                                    (posisiKapsul.value + jumlah)
+                                        .coerceIn(0f, langkahPx * (tabs.size - 1)),
+                                )
+                            }
+                        },
+                    )
+                },
+        ) {
+            // Kapsul LIQUID GLASS TUMPUK yang bergeser di belakang item
+            // terpilih (bukan putih polos lagi — perintah user 2026-11-12)
             Box(
                 modifier = Modifier
-                    .offset(x = geserKapsul)
+                    .offset { IntOffset(posisiKapsul.value.roundToInt(), 0) }
+                    .graphicsLayer {
+                        scaleX = skalaKapsul
+                        scaleY = 1f - (skalaKapsul - 1f) * 0.6f
+                    }
                     .width(84.dp)
                     .height(52.dp)
-                    .background(
-                        if (gelap) Color.White.copy(alpha = 0.20f)
-                        else Color.White.copy(alpha = 0.88f),
-                        RoundedCornerShape(26.dp),
-                    )
-                    .border(
-                        1.dp,
-                        Color.White.copy(alpha = if (gelap) 0.28f else 0.75f),
-                        RoundedCornerShape(26.dp),
-                    ),
+                    .kacaKapsulTab(RoundedCornerShape(26.dp), gelap),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 for (tab in tabs) {
@@ -790,6 +851,10 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
     }
 
     Box(Modifier.fillMaxSize()) {
+        // Mesh + konten layar direkam (KotakTerekam) biar kaca melayang
+        // (bar tab, mini player) bisa nyampel backdrop ASLI di belakangnya.
+        KotakTerekam {
+        LatarKacaApp()
         // Transisi antar-layar (permintaan user: jangan kaku):
         // maju = geser kiri, KEMBALI = geser kanan (dari kedalaman layar),
         // buka foto = nge-ZOOM membesar, tutup foto = MENCIUT mengecil.
@@ -928,6 +993,7 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                     onGantiNama = { item, nama -> vm.gantiNama(item, nama) },
                 )
             }
+        }
         }
         }
 

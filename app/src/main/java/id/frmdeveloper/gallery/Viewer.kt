@@ -150,7 +150,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.viewinterop.AndroidView
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem as ExoMediaItem
 import androidx.media3.common.Player
@@ -616,6 +619,7 @@ private fun VideoPage(
     }
 
 
+    val backdropHalaman = rememberLayerBackdrop()
     Box(
         Modifier
             .fillMaxSize()
@@ -624,6 +628,7 @@ private fun VideoPage(
                 else MaterialTheme.colorScheme.background
             ),
     ) {
+        CompositionLocalProvider(LocalKacaMedia provides backdropHalaman) {
         if (modeMusik) {
             LayarModeMusikVideo(
                 item = item,
@@ -653,7 +658,7 @@ private fun VideoPage(
                 playerViewRef = pv
                 pv
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().layerBackdrop(backdropHalaman),
         )
         // Lapisan ketuk: tampil/sembunyi kontrol (geser halaman tetap jalan)
         Box(
@@ -936,6 +941,7 @@ private fun VideoPage(
         }
         }
 
+        }
         }
     }
 }
@@ -1351,7 +1357,7 @@ private fun FastOption(icon: ImageVector, label: String, onClick: () -> Unit) {
     ) {
         Icon(
             icon, contentDescription = label,
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = Color.White,
             modifier = Modifier.size(25.dp),
         )
     }
@@ -1738,6 +1744,7 @@ fun ViewerScreen(
             }
         }
     }
+    val backdropMedia = rememberLayerBackdrop()
     BackHandler(enabled = rincianTerbuka) { rincianTerbuka = false }
 
     Box(
@@ -1746,6 +1753,7 @@ fun ViewerScreen(
             .background(MaterialTheme.colorScheme.background)
             .onSizeChanged { tinggiLayarPx = it.height },
     ) {
+      CompositionLocalProvider(LocalKacaMedia provides backdropMedia) {
       Box(
         modifier = Modifier
             .align(Alignment.TopCenter)
@@ -1814,7 +1822,7 @@ fun ViewerScreen(
       ) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().layerBackdrop(backdropMedia),
             userScrollEnabled = !modeMusikVideo && !kunciPager,
         ) { page ->
             val item = items[page]
@@ -1950,12 +1958,12 @@ fun ViewerScreen(
                 modifier = Modifier
                     .statusBarsPadding()
                     .padding(start = 14.dp, top = 10.dp)
-                    .kacaCair(CircleShape, gelapAktif(), bayangan = 10.dp),
+                    .kacaCairHitam(CircleShape, bayangan = 10.dp),
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack, "Kembali",
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = Color.White,
                     )
                 }
             }
@@ -1976,7 +1984,7 @@ fun ViewerScreen(
                     modifier = Modifier
                         .navigationBarsPadding()
                         .padding(bottom = 10.dp)
-                        .kacaCair(RoundedCornerShape(50), gelapAktif(), bayangan = 14.dp),
+                        .kacaCairHitam(RoundedCornerShape(50), bayangan = 14.dp),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -2030,6 +2038,7 @@ fun ViewerScreen(
                 }
                 }
             }
+        }
         }
     }
 

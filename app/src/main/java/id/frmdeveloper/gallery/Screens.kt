@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -185,6 +187,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -496,6 +499,17 @@ fun MediaGrid(
     }
     val statusGrid = rememberLazyGridState()
     IngatPosisiGrid(statusGrid, "grid_" + kunciPosisi, entries.size)
+    // Tepi kiri/kanan: foto JANGAN mepet pinggir layar (perintah user
+    // 2026-11-12 dari screenshot Timeline) — semua grid foto dapat
+    // margin 10.dp di atas padding yg diminta pemanggil; header tanggal
+    // (item di dalam grid) ikut ter-margin, konsisten ala Samsung.
+    val arahLayout = LocalLayoutDirection.current
+    val paddingEfektif = PaddingValues(
+        start = contentPadding.calculateStartPadding(arahLayout) + 10.dp,
+        end = contentPadding.calculateEndPadding(arahLayout) + 10.dp,
+        top = contentPadding.calculateTopPadding(),
+        bottom = contentPadding.calculateBottomPadding(),
+    )
     LazyVerticalGrid(
         state = statusGrid,
         columns = GridCells.Fixed(kolomUntukLevel(level)),
@@ -509,7 +523,7 @@ fun MediaGrid(
                     )
                 }
             },
-        contentPadding = contentPadding,
+        contentPadding = paddingEfektif,
         horizontalArrangement = Arrangement.spacedBy(1.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
@@ -2485,7 +2499,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Source GitHub",
-                sub = "Galeri FRM 1.91",
+                sub = "Galeri FRM 1.99",
                 onClick = {
                     runCatching {
                         ctxMenu.startActivity(

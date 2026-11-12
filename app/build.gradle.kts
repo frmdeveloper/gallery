@@ -12,8 +12,8 @@ android {
         applicationId = "id.frmdeveloper.gallery"
         minSdk = 30
         targetSdk = 36
-        versionCode = 92
-        versionName = "1.91"
+        versionCode = 100
+        versionName = "1.99"
     }
 
     // Kunci tanda tangan DIPIN ke file di dalam project (persisten di workspace).
@@ -81,6 +81,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.github.kyant0:backdrop:1.0.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("io.coil-kt:coil-video:2.7.0")
