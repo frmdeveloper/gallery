@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/frmdeveloper/gallery/releases/download/v1.91/GaleriFRM-v1.91.apk">
-    <img src="https://img.shields.io/badge/Download-GaleriFRM--v1.91.apk-007AFF?style=for-the-badge&logo=android&logoColor=white" alt="Download Galeri FRM APK" />
+  <a href="https://github.com/frmdeveloper/gallery/releases/download/v1.99/GaleriFRM-v1.99.apk">
+    <img src="https://img.shields.io/badge/Download-GaleriFRM--v1.99.apk-007AFF?style=for-the-badge&logo=android&logoColor=white" alt="Download Galeri FRM APK" />
   </a>
   <br />
   <sub><a href="https://github.com/frmdeveloper/gallery/releases">All releases</a></sub>
