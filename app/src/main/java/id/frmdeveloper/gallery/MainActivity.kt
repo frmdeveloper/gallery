@@ -107,6 +107,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Bar sistem BENAR-BENAR transparan: matikan scrim kontras
+        // bawaan Android — scrim itulah yg bikin area navigation bar
+        // kelihatan PUTIH di pemutar musik yg latarnya gelap, padahal
+        // konten sudah digambar sampai ke belakang bar (laporan user
+        // 2026-11-12 malam).
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        window.isStatusBarContrastEnforced = false
+        window.isNavigationBarContrastEnforced = false
         DriveApi.init(this)
         // Jembatan login Drive dialog Google: ViewModel minta Activity
         // menampilkan lembar pilih akun/izin (PendingIntent Identity API)
@@ -627,6 +636,20 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
         }.onFailure { vm.selesaikanGantiNamaSetelahIzin(false) }
     }
 
+    // ---- Izin UBAH INFO lagu (judul/artis): pola sama kayak izin
+    // ganti nama, state tertundanya di VM ----
+    val izinUbahInfoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { hasil ->
+        vm.selesaikanUbahInfoSetelahIzin(hasil.resultCode == android.app.Activity.RESULT_OK)
+    }
+    LaunchedEffect(vm.ubahInfoPerluIzin) {
+        val pi = vm.ubahInfoPerluIzin ?: return@LaunchedEffect
+        runCatching {
+            izinUbahInfoLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
+        }.onFailure { vm.selesaikanUbahInfoSetelahIzin(false) }
+    }
+
     // ---- Izin AUDIO terpisah (tab Audio): nolak audio TIDAK boleh
     // mengunci galeri foto/video, jadi launchernya sendiri. ----
     val izinAudioPerm = if (Build.VERSION.SDK_INT >= 33) {
@@ -991,6 +1014,7 @@ private fun AppRoot(vm: GalleryViewModel = viewModel()) {
                     onSerahkanVideo = { videos, mulai, pos -> vm.serahkanVideoKeLatar(videos, mulai, pos) },
                     onAmbilAlihVideo = { vm.ambilAlihDariLatar() },
                     onGantiNama = { item, nama -> vm.gantiNama(item, nama) },
+                    labelOutputKustom = vm.labelOutputKustom,
                 )
             }
         }

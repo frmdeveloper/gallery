@@ -83,8 +83,27 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
         l?.invoke(ok)
     }
 
+    /** Label kustom pill output pemutar (tekan-tahan pill "Speaker"
+     *  buat mengubahnya; kosong = pakai nama perangkat asli). */
+    var labelOutputKustom by mutableStateOf<String?>(null)
+        private set
+
+    fun aturLabelOutputKustom(teks: String?) {
+        labelOutputKustom = teks?.trim()?.takeIf { it.isNotBlank() }
+        UiStore.saveString(
+            getApplication(), "label_output_kustom", labelOutputKustom ?: "",
+        )
+        beriTahu(
+            if (labelOutputKustom == null) "Nama output balik ke nama perangkat"
+            else "Nama output disimpan",
+        )
+    }
+
     init {
         DriveApi.init(app)
+        labelOutputKustom = UiStore
+            .loadString(app, "label_output_kustom", "")
+            ?.takeIf { it.isNotBlank() }
         // Daftar akun dimuat DriveStore (termasuk migrasi login tunggal
         // lama jadi akun pertama); state turunan disamakan dari situ.
         sinkronAkun()
@@ -994,7 +1013,35 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
                 k.addListener(listenerLagu)
                 acakLagu = k.shuffleModeEnabled
                 muterLagu = k.isPlaying
+                ulangLagu = when (k.repeatMode) {
+                    Player.REPEAT_MODE_ALL -> 1
+                    Player.REPEAT_MODE_ONE -> 2
+                    else -> 0
+                }
                 if (k.mediaItemCount > 0) {
+                    // REHIDRASI: aplikasi dibuka lagi sementara lagu masih
+                    // muter di layanan (VM baru, antrean masih kosong) —
+                    // susun ulang antrean dari timeline kontroler,
+                    // cocokkan ke daftar lagu biar datanya utuh, sisanya
+                    // dari metadata item. Tanpa ini mini player gak
+                    // muncul pas aplikasi dibuka lagi (laporan user
+                    // 2026-11-12 malam).
+                    if (antreanLagu.isEmpty()) {
+                        val perKunci = laguDaftar.associateBy { it.key }
+                        antreanLagu = (0 until k.mediaItemCount).map { i ->
+                            val mi = k.getMediaItemAt(i)
+                            perKunci[mi.mediaId] ?: AudioItem(
+                                key = mi.mediaId,
+                                uri = mi.localConfiguration?.uri ?: Uri.parse(mi.mediaId),
+                                title = mi.mediaMetadata.title?.toString() ?: "Tidak dikenal",
+                                artist = mi.mediaMetadata.artist?.toString() ?: "",
+                                album = mi.mediaMetadata.albumTitle?.toString() ?: "",
+                                durationMs = 0L,
+                                artUri = mi.mediaMetadata.artworkUri ?: Uri.EMPTY,
+                                dateMillis = 0L,
+                            )
+                        }
+                    }
                     antreanLagu.getOrNull(k.currentMediaItemIndex)?.let { laguDimainkan = it }
                 }
                 putarTertunda?.let { (item, antrean, pos) -> putarLagu(item, antrean, pos) }
@@ -1174,6 +1221,114 @@ class GalleryViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } else {
                 beriTahu("Gagal menulis cover: ${pesanGagal ?: "tidak diketahui"}")
+            }
+        }
+    }
+
+    /** Izin tulis tertunda buat ubah info lagu (createWriteRequest). */
+    var ubahInfoPerluIzin by mutableStateOf<android.app.PendingIntent?>(null)
+    private var ubahInfoTertunda: Triple<AudioItem, String?, String?>? = null
+
+    fun selesaikanUbahInfoSetelahIzin(disetujui: Boolean) {
+        val t = ubahInfoTertunda
+        ubahInfoPerluIzin = null
+        ubahInfoTertunda = null
+        if (disetujui && t != null) {
+            ubahInfoLagu(t.first, t.second, t.third, dariIzin = true)
+        } else if (!disetujui) {
+            beriTahu("Izin menulis berkas lagu ditolak")
+        }
+    }
+
+    /**
+     * Ubah JUDUL / ARTIS di tag berkas lagu (perintah user 2026-11-12
+     * malam: klik judul/artis di pemutar langsung muncul pengubahnya).
+     * Pola tulis sama persis [tulisCoverLagu]: salin ke cache, sunting
+     * tag di sana, tulis balik lewat URI, pindai ulang MediaStore.
+     * Kolom yg null tidak diubah; string kosong = hapus kolomnya.
+     * Berkas yg BUKAN milik aplikasi ditolak MediaStore pas tulis
+     * balik (SecurityException "has no access to content://media/
+     * external/audio/...", laporan user 2026-11-12) — tangkap itu,
+     * minta izin tulis lewat createWriteRequest, coba lagi sesudah
+     * user menyetujui (pola pindah/ganti nama).
+     */
+    fun ubahInfoLagu(
+        lagu: AudioItem,
+        judulBaru: String?,
+        artisBaru: String?,
+        dariIzin: Boolean = false,
+    ) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            var pesanGagal: String? = null
+            var penyebab: Throwable? = null
+            val sukses = withContext(Dispatchers.IO) {
+                runCatching {
+                    val ext = lagu.path.substringAfterLast('.', "mp3")
+                    val salinan = java.io.File(app.cacheDir, "sunting-info.$ext")
+                    app.contentResolver.openInputStream(lagu.uri).use { masuk ->
+                        requireNotNull(masuk) { "berkas lagu tidak terbaca" }
+                        salinan.outputStream().use { keluar -> masuk.copyTo(keluar) }
+                    }
+                    val af = org.jaudiotagger.audio.AudioFileIO.read(salinan)
+                    val tag = af.tagOrCreateAndSetDefault
+                    if (judulBaru != null) {
+                        if (judulBaru.isBlank()) {
+                            tag.deleteField(org.jaudiotagger.tag.FieldKey.TITLE)
+                        } else {
+                            tag.setField(org.jaudiotagger.tag.FieldKey.TITLE, judulBaru)
+                        }
+                    }
+                    if (artisBaru != null) {
+                        if (artisBaru.isBlank()) {
+                            tag.deleteField(org.jaudiotagger.tag.FieldKey.ARTIST)
+                        } else {
+                            tag.setField(org.jaudiotagger.tag.FieldKey.ARTIST, artisBaru)
+                        }
+                    }
+                    af.commit()
+                    app.contentResolver.openOutputStream(lagu.uri, "w").use { keluar ->
+                        requireNotNull(keluar) { "saluran tulis URI tertutup" }
+                        salinan.inputStream().use { masuk -> masuk.copyTo(keluar) }
+                    }
+                    salinan.delete()
+                    true
+                }.onFailure { e ->
+                    penyebab = e
+                    pesanGagal = (e.message ?: e.javaClass.simpleName).take(120)
+                }.isSuccess
+            }
+            if (sukses) {
+                // Antrean + yg lagi main langsung diperbarui di tempat
+                // (MediaStore nyusul lewat pindaian di bawah)
+                val perbarui: (AudioItem) -> AudioItem = { l ->
+                    if (l.key == lagu.key) {
+                        l.copy(
+                            title = judulBaru ?: l.title,
+                            artist = artisBaru ?: l.artist,
+                        )
+                    } else l
+                }
+                antreanLagu = antreanLagu.map(perbarui)
+                laguDimainkan = laguDimainkan?.let(perbarui)
+                android.media.MediaScannerConnection.scanFile(
+                    app, arrayOf(lagu.path), null,
+                ) { _, _ ->
+                    viewModelScope.launch { reloadAudio() }
+                }
+                beriTahu("Info lagu disimpan")
+            } else if (!dariIzin && penyebab is SecurityException) {
+                val pi = runCatching {
+                    MediaStore.createWriteRequest(app.contentResolver, listOf(lagu.uri))
+                }.getOrNull()
+                if (pi != null) {
+                    ubahInfoTertunda = Triple(lagu, judulBaru, artisBaru)
+                    ubahInfoPerluIzin = pi
+                } else {
+                    beriTahu("Gagal mengubah info lagu: ${pesanGagal ?: "tidak diketahui"}")
+                }
+            } else {
+                beriTahu("Gagal mengubah info lagu: ${pesanGagal ?: "tidak diketahui"}")
             }
         }
     }

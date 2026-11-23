@@ -12,8 +12,8 @@ android {
         applicationId = "id.frmdeveloper.gallery"
         minSdk = 30
         targetSdk = 36
-        versionCode = 100
-        versionName = "1.99"
+        versionCode = 108
+        versionName = "1.107"
     }
 
     // Kunci tanda tangan DIPIN ke file di dalam project (persisten di workspace).

@@ -31,6 +31,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -131,6 +132,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -140,6 +142,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -156,6 +161,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
@@ -820,7 +826,7 @@ fun KromPilihMengambang(
             Row(
                 Modifier
                     .height(40.dp)
-                    .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
+                    .kacaCairKonten(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -838,7 +844,7 @@ fun KromPilihMengambang(
             Box(
                 Modifier
                     .height(40.dp)
-                    .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
+                    .kacaCairKonten(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
                     .clickable(onClick = onClose)
                     .padding(horizontal = 18.dp),
                 contentAlignment = Alignment.Center,
@@ -878,7 +884,7 @@ fun KromPilihMengambang(
                     .padding(bottom = 80.dp)
                     .fillMaxWidth(0.8f)
                     .widthIn(max = 340.dp)
-                    .kacaCair(RoundedCornerShape(28.dp), gelap = gelapAktif(), bayangan = 14.dp)
+                    .kacaCairKonten(RoundedCornerShape(28.dp), gelap = gelapAktif(), bayangan = 14.dp)
                     .padding(vertical = 10.dp),
             ) {
                 ItemMenuLainnya("Salin ke clipboard") { menuLainnya = false; onSalinClipboard() }
@@ -903,7 +909,7 @@ fun KromPilihMengambang(
             Modifier
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp)
-                .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 10.dp)
+                .kacaCairKonten(CircleShape, gelap = gelapAktif(), bayangan = 10.dp)
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -997,6 +1003,7 @@ fun TimelineScreen(
     sembunyikanKromPilih: Boolean = false,
 ) {
     val ctxUi = LocalContext.current
+    val backdropGrid = rememberLayerBackdrop()
     var level by rememberSaveable { mutableIntStateOf(UiStore.loadInt(ctxUi, "zoom_gambar", 1)) }
     LaunchedEffect(level) { UiStore.saveInt(ctxUi, "zoom_gambar", level) }
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -1060,7 +1067,14 @@ fun TimelineScreen(
                     IconButton(onClick = { searching = !searching }) { Icon(Icons.Filled.Search, "Cari") }
                     Box {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "Lainnya") }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenu(
+                            expanded = menuOpen, onDismissRequest = { menuOpen = false },
+                            modifier = Modifier.kacaMenu(RoundedCornerShape(20.dp), gelap = gelapAktif()),
+                            shape = RoundedCornerShape(20.dp),
+                            containerColor = Color.Transparent,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                        ) {
                             DropdownMenuItem(
                                 text = { Text("Pilih item") },
                                 leadingIcon = { Icon(Icons.Filled.SelectAll, null) },
@@ -1160,6 +1174,7 @@ fun TimelineScreen(
                         onItemClick = onItemClick,
                         onItemLongClick = onItemLongClick,
                         contentPadding = PaddingValues(bottom = 96.dp),
+                        modifier = Modifier.layerBackdrop(backdropGrid),
                     )
                 }
                 // Tombol bulet kembali melayang (ala screenshot) pas panel
@@ -1175,6 +1190,7 @@ fun TimelineScreen(
             }
         }
     }
+CompositionLocalProvider(LocalKacaMedia provides backdropGrid) {
     KromPilihMengambang(
         tampak = selecting && !sembunyikanKromPilih,
         count = selection.size,
@@ -1194,6 +1210,7 @@ fun TimelineScreen(
                 onCloseSelecting()
             },
     )
+    }
     if (modeAlbumSheet != null) {
         PemilihAlbumSheet(
             albums = daftarAlbumPanel,
@@ -1691,7 +1708,14 @@ fun AlbumsScreen(
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Filled.MoreVert, "Lainnya")
                     }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenu(
+                        expanded = menuOpen, onDismissRequest = { menuOpen = false },
+                        modifier = Modifier.kacaMenu(RoundedCornerShape(20.dp), gelap = gelapAktif()),
+                        shape = RoundedCornerShape(20.dp),
+                        containerColor = Color.Transparent,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                    ) {
                         DropdownMenuItem(
                             text = { Text(if (modeDaftar) "Tampilan grid" else "Tampilan daftar") },
                             onClick = { menuOpen = false; modeDaftar = !modeDaftar },
@@ -1851,6 +1875,7 @@ fun AlbumDetailScreen(
     onStartSelecting: () -> Unit = {},
 ) {
     val ctxUiDetail = LocalContext.current
+    val backdropGrid = rememberLayerBackdrop()
     var level by rememberSaveable { mutableIntStateOf(UiStore.loadInt(ctxUiDetail, "zoom_album_detail", 1)) }
     LaunchedEffect(level) { UiStore.saveInt(ctxUiDetail, "zoom_album_detail", level) }
     // === Panel album juga ada DI DALAM album (perintah user): usap kanan /
@@ -1900,7 +1925,14 @@ fun AlbumDetailScreen(
                         IconButton(onClick = { menuDetailOpen = true }) {
                             Icon(Icons.Filled.MoreVert, "Lainnya")
                         }
-                        DropdownMenu(expanded = menuDetailOpen, onDismissRequest = { menuDetailOpen = false }) {
+                        DropdownMenu(
+                            expanded = menuDetailOpen, onDismissRequest = { menuDetailOpen = false },
+                            modifier = Modifier.kacaMenu(RoundedCornerShape(20.dp), gelap = gelapAktif()),
+                            shape = RoundedCornerShape(20.dp),
+                            containerColor = Color.Transparent,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                        ) {
                             DropdownMenuItem(
                                 text = { Text("Pilih item") },
                                 leadingIcon = { Icon(Icons.Filled.SelectAll, null) },
@@ -1971,6 +2003,7 @@ fun AlbumDetailScreen(
                         onItemClick = { item -> onItemClick(freshItems, item) },
                         onItemLongClick = onItemLongClick,
                         contentPadding = PaddingValues(bottom = 96.dp),
+                        modifier = Modifier.layerBackdrop(backdropGrid),
                     )
                 }
                 TombolBuletKembali(
@@ -1984,6 +2017,7 @@ fun AlbumDetailScreen(
             }
         }
     }
+CompositionLocalProvider(LocalKacaMedia provides backdropGrid) {
     KromPilihMengambang(
         tampak = selecting,
         count = selection.size,
@@ -2003,6 +2037,7 @@ fun AlbumDetailScreen(
                 onCloseSelecting()
             },
     )
+    }
     if (modeAlbumSheet != null) {
         PemilihAlbumSheet(
             albums = daftarAlbumDetail,
@@ -2499,7 +2534,7 @@ fun MenuScreen(
         KartuMenu {
             BarisMenu(
                 judul = "Source GitHub",
-                sub = "Galeri FRM 1.99",
+                sub = "Galeri FRM 1.107",
                 onClick = {
                     runCatching {
                         ctxMenu.startActivity(
@@ -2932,7 +2967,14 @@ private fun MenuUrutanAudio(urutan: Int, onPilih: (Int) -> Unit) {
         IconButton(onClick = { terbuka = true }) {
             Icon(Icons.Filled.MoreVert, "Urutkan")
         }
-        DropdownMenu(expanded = terbuka, onDismissRequest = { terbuka = false }) {
+        DropdownMenu(
+            expanded = terbuka, onDismissRequest = { terbuka = false },
+            modifier = Modifier.kacaMenu(RoundedCornerShape(20.dp), gelap = gelapAktif()),
+            shape = RoundedCornerShape(20.dp),
+            containerColor = Color.Transparent,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+        ) {
             LABEL_URUTAN_AUDIO.forEachIndexed { i, label ->
                 DropdownMenuItem(
                     text = { Text((if (urutan == i + 1) "✓ " else "") + label) },
@@ -2960,6 +3002,7 @@ fun AudioScreen(
         UiStore.saveBool(ctxAudio, "daftar_audio", modeDaftar)
     }
     val statusDaftarAudio = rememberLazyListState()
+    val backdropAudio = rememberLayerBackdrop()
     val statusGridAudio = rememberLazyGridState()
     var query by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(izinAudio) {
@@ -3072,7 +3115,7 @@ fun AudioScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().layerBackdrop(backdropAudio),
                     contentPadding = PaddingValues(top = 6.dp, bottom = 170.dp),
                 ) {
                     items(hasilCari, key = { it.key }) { lagu ->
@@ -3122,6 +3165,7 @@ fun AudioScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .animasiZoom(kunci = modeDaftar, membesar = false)
+                    .layerBackdrop(backdropAudio)
                     .pointerInput(Unit) {
                         detectCubitGrid { zoomIn ->
                             if (zoomIn) {
@@ -3169,6 +3213,7 @@ fun AudioScreen(
                 columns = GridCells.Fixed(kolom),
                 modifier = Modifier
                     .fillMaxSize()
+                    .layerBackdrop(backdropAudio)
                     .pointerInput(Unit) {
                         detectCubitGrid { zoomIn ->
                             when {
@@ -3215,6 +3260,7 @@ fun AudioScreen(
         }
     }
     val daftarDipilihLagu = hasilCari.filter { it.key in pilihanLagu }
+CompositionLocalProvider(LocalKacaMedia provides backdropAudio) {
     KromPilihLaguMengambang(
         tampak = memilihLagu,
         count = pilihanLagu.size,
@@ -3261,6 +3307,7 @@ fun AudioScreen(
         },
         onRincian = { rincianLagu = daftarDipilihLagu.firstOrNull() },
     )
+    }
     DialogRincianLagu(rincianLagu) { rincianLagu = null }
     }
 }
@@ -3304,7 +3351,7 @@ fun KromPilihLaguMengambang(
                 Row(
                     Modifier
                         .height(40.dp)
-                        .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
+                        .kacaCairKonten(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -3322,7 +3369,7 @@ fun KromPilihLaguMengambang(
                 Box(
                     Modifier
                         .height(40.dp)
-                        .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
+                        .kacaCairKonten(CircleShape, gelap = gelapAktif(), bayangan = 6.dp)
                         .clickable(onClick = onClose)
                         .padding(horizontal = 18.dp),
                     contentAlignment = Alignment.Center,
@@ -3362,7 +3409,7 @@ fun KromPilihLaguMengambang(
                     .padding(bottom = 156.dp)
                     .fillMaxWidth(0.8f)
                     .widthIn(max = 340.dp)
-                    .kacaCair(RoundedCornerShape(28.dp), gelap = gelapAktif(), bayangan = 14.dp)
+                    .kacaCairKonten(RoundedCornerShape(28.dp), gelap = gelapAktif(), bayangan = 14.dp)
                     .padding(vertical = 10.dp),
             ) {
                 if (bisaUbahSampul) {
@@ -3385,7 +3432,7 @@ fun KromPilihLaguMengambang(
                 Modifier
                     .navigationBarsPadding()
                     .padding(bottom = 84.dp)
-                    .kacaCair(CircleShape, gelap = gelapAktif(), bayangan = 10.dp)
+                    .kacaCairKonten(CircleShape, gelap = gelapAktif(), bayangan = 10.dp)
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -3545,6 +3592,7 @@ fun AudioTracksScreen(
     onOpenPlayer: () -> Unit,
 ) {
     val ctxTracks = LocalContext.current
+    val backdropAudio = rememberLayerBackdrop()
     // Ambil versi segar dari VM (reload bisa mengubah isi folder)
     val folderKini = vm.audioFolders.firstOrNull { it.id == folder.id } ?: folder
     var query by rememberSaveable { mutableStateOf("") }
@@ -3637,7 +3685,7 @@ fun AudioTracksScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().layerBackdrop(backdropAudio),
                 contentPadding = PaddingValues(top = 6.dp, bottom = 170.dp),
             ) {
                 items(tampil, key = { it.key }) { lagu ->
@@ -3667,6 +3715,7 @@ fun AudioTracksScreen(
         }
     }
     val daftarDipilihLagu = tampil.filter { it.key in pilihanLagu }
+CompositionLocalProvider(LocalKacaMedia provides backdropAudio) {
     KromPilihLaguMengambang(
         tampak = memilihLagu,
         count = pilihanLagu.size,
@@ -3713,6 +3762,7 @@ fun AudioTracksScreen(
         },
         onRincian = { rincianLagu = daftarDipilihLagu.firstOrNull() },
     )
+    }
     DialogRincianLagu(rincianLagu) { rincianLagu = null }
     }
 }
@@ -4030,6 +4080,8 @@ fun BarisJudulPemutar(
     judul: String,
     artis: String,
     u: Dp,
+    onKlikJudul: (() -> Unit)? = null,
+    onKlikArtis: (() -> Unit)? = null,
     ekor: @Composable () -> Unit,
 ) {
     Row(
@@ -4037,11 +4089,25 @@ fun BarisJudulPemutar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            JudulBerjalan(judul, (45f * u.value).sp, Modifier.fillMaxWidth())
+            JudulBerjalan(
+                judul, (45f * u.value).sp,
+                Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (onKlikJudul != null) {
+                            Modifier.clickable(onClick = onKlikJudul)
+                        } else Modifier,
+                    ),
+            )
             Text(
                 artis, fontSize = (30f * u.value).sp,
                 color = Color.White.copy(alpha = 0.55f),
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.then(
+                    if (onKlikArtis != null) {
+                        Modifier.clickable(onClick = onKlikArtis)
+                    } else Modifier,
+                ),
             )
         }
         ekor()
@@ -4073,8 +4139,6 @@ fun BarisWaktuPemutar(kiri: String, kanan: String, u: Dp) {
 @Composable
 fun BarisTransportPemutar(
     u: Dp,
-    favorit: Boolean,
-    onFavorit: () -> Unit,
     onPrev: () -> Unit,
     onPlayPause: () -> Unit,
     muter: Boolean,
@@ -4082,23 +4146,15 @@ fun BarisTransportPemutar(
     prevAktif: Boolean = true,
     nextAktif: Boolean = true,
 ) {
+    // Trio transport SAJA di tengah — tombol bintang favorit DIHAPUS
+    // (perintah user 2026-11-12 malam; bintang itu ikut dari referensi
+    // iOS v1.82, sebelumnya emang gak ada). Favorit tetap bisa dari
+    // menu ekor pemutar.
     Row(
         modifier = Modifier.fillMaxWidth().height(u * 84),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
-        Spacer(Modifier.width(u * 51))
-        Box(
-            Modifier.width(u * 64).fillMaxHeight().clickable(onClick = onFavorit),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                if (favorit) Icons.Filled.Star else Icons.Filled.StarBorder,
-                "Favorit",
-                tint = Color.White.copy(alpha = 0.92f),
-                modifier = Modifier.size(u * 62),
-            )
-        }
-        Spacer(Modifier.width(u * 69))
         Box(
             Modifier.width(u * 83).fillMaxHeight()
                 .clickable(enabled = prevAktif, onClick = onPrev),
@@ -4177,12 +4233,19 @@ fun BarisVolumePemutar(
 }
 
 /** Pil output ala AirPlay di tengah bawah kartu. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun PillOutputPemutar(u: Dp, nama: String, onKlik: () -> Unit) {
+fun PillOutputPemutar(u: Dp, nama: String, onTahan: (() -> Unit)? = null, onKlik: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(999.dp),
         color = Color.White.copy(alpha = 0.12f),
-        modifier = Modifier.clickable(onClick = onKlik),
+        modifier = Modifier.then(
+            if (onTahan != null) {
+                Modifier.combinedClickable(onClick = onKlik, onLongClick = onTahan)
+            } else {
+                Modifier.clickable(onClick = onKlik)
+            },
+        ),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = u * 36, vertical = u * 17),
@@ -4264,6 +4327,35 @@ private fun LatarPemutar(lagu: AudioItem?, versi: Int = 0) {
     }
 }
 
+/** Satu baris di menu ⋮ pemutar musik: ikon + label; nyala = aksen. */
+@Composable
+private fun BarisMenuPemutar(
+    ikon: ImageVector,
+    label: String,
+    nyala: Boolean = false,
+    bahaya: Boolean = false,
+    status: String? = null,
+    onClick: () -> Unit,
+) {
+    val warna = when {
+        bahaya -> MerahIos
+        nyala -> BiruIosGelap
+        else -> Color.White
+    }
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(ikon, label, tint = warna, modifier = Modifier.size(21.dp))
+        Spacer(Modifier.width(13.dp))
+        Text(label, color = warna, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        if (status != null) {
+            Text(status, color = warna.copy(alpha = 0.75f), fontSize = 13.sp)
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlayerScreen(
@@ -4273,6 +4365,30 @@ fun PlayerScreen(
     val lagu = vm.laguDimainkan
     var geser by remember { mutableStateOf<Float?>(null) }
     val ctx = LocalContext.current
+    // Menu ⋮ pojok kanan atas pemutar (perintah user 2026-11-12 malam)
+    var menuPemutar by remember { mutableStateOf(false) }
+    var editInfo by remember { mutableStateOf<String?>(null) }
+    var teksInfo by remember { mutableStateOf("") }
+    LaunchedEffect(editInfo) {
+        val l = vm.laguDimainkan
+        if (l != null) {
+            if (editInfo == "judul") teksInfo = l.title
+            else if (editInfo == "artis") teksInfo = l.artist
+        }
+    }
+    val penghapusPemutar = remember { mutableStateOf<AudioItem?>(null) }
+    val peluncurHapusPemutar = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { hasil ->
+        val target = penghapusPemutar.value
+        penghapusPemutar.value = null
+        if (hasil.resultCode == android.app.Activity.RESULT_OK && target != null) {
+            vm.tutupPemutar()
+            vm.beriTahu("Lagu dihapus")
+            vm.reloadAudio()
+            onBack()
+        }
+    }
     val izinSpektrum = ingatIzinSpektrum(minta = true)
     val audioManager = remember {
         ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -4304,9 +4420,14 @@ fun PlayerScreen(
     // screenshot referensi): kartu kaca di tengah layar; DUA tombol
     // pojok atas (turun + antrean) DIHAPUS total. Nutup pemutar =
     // tombol Back sistem ATAU tarik ke bawah.
+    // Backdrop cover: latar direkam biar tombol ⋮ + menunya bisa kaca
+    // cair ASLI nyampel cover yg lagi tampil (kayak penampil foto/video).
+    val backdropPemutar = rememberLayerBackdrop()
     Box(modifier = Modifier.fillMaxSize()) {
         // Latar blur cover LAYAR PENUH dari tepi atas layar.
-        LatarPemutar(lagu, vm.versiCover)
+        Box(Modifier.fillMaxSize().layerBackdrop(backdropPemutar)) {
+            LatarPemutar(lagu, vm.versiCover)
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -4393,7 +4514,19 @@ fun PlayerScreen(
                     // (kanan). TAHAN ikon gelombang = menu lama (acak /
                     // favorit / putar ulang / rincian) — visual kartu
                     // tetap persis referensi, tanpa tombol titik tiga.
-                    BarisJudulPemutar(lagu.title, lagu.artist, u) {
+                    BarisJudulPemutar(
+                        lagu.title, lagu.artist, u,
+                        onKlikJudul = {
+                            if (lagu.akunDrive.isNotBlank()) {
+                                vm.beriTahu("Lagu Drive belum bisa diubah")
+                            } else editInfo = "judul"
+                        },
+                        onKlikArtis = {
+                            if (lagu.akunDrive.isNotBlank()) {
+                                vm.beriTahu("Lagu Drive belum bisa diubah")
+                            } else editInfo = "artis"
+                        },
+                    ) {
                         Box {
                             Box(
                                 Modifier
@@ -4414,6 +4547,11 @@ fun PlayerScreen(
                             DropdownMenu(
                                 expanded = menuLainLagu,
                                 onDismissRequest = { menuLainLagu = false },
+                                modifier = Modifier.kacaCairHitam(RoundedCornerShape(20.dp), bayangan = 12.dp),
+                                shape = RoundedCornerShape(20.dp),
+                                containerColor = Color.Transparent,
+                                tonalElevation = 0.dp,
+                                shadowElevation = 0.dp,
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("Acak") },
@@ -4422,6 +4560,7 @@ fun PlayerScreen(
                                         { Icon(Icons.Filled.Check, null) }
                                     } else null,
                                     onClick = { vm.toggleAcakLagu(); menuLainLagu = false },
+                                    colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Favorit") },
@@ -4435,6 +4574,7 @@ fun PlayerScreen(
                                         { Icon(Icons.Filled.Check, null) }
                                     } else null,
                                     onClick = { vm.toggleFavoritLagu(lagu); menuLainLagu = false },
+                                    colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                                 )
                                 DropdownMenuItem(
                                     text = {
@@ -4453,11 +4593,13 @@ fun PlayerScreen(
                                         )
                                     },
                                     onClick = { vm.siklusUlangLagu(); menuLainLagu = false },
+                                    colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Rincian") },
                                     leadingIcon = { Icon(Icons.Filled.Info, null) },
                                     onClick = { menuLainLagu = false; rincianLagu = true },
+                                    colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                                 )
                             }
                         }
@@ -4530,11 +4672,8 @@ fun PlayerScreen(
                         u,
                     )
                     Spacer(Modifier.height(u * 26))
-                    // Transport PERSIS referensi: bintang • prev • jeda • next
                     BarisTransportPemutar(
                         u = u,
-                        favorit = lagu.key in vm.favorites,
-                        onFavorit = { vm.toggleFavoritLagu(lagu) },
                         onPrev = { vm.laguSebelum() },
                         onPlayPause = { vm.toggleLagu() },
                         muter = vm.muterLagu,
@@ -4555,8 +4694,213 @@ fun PlayerScreen(
                     )
                     Spacer(Modifier.height(u * 24))
                     // Pil output ala AirPlay
-                    PillOutputPemutar(u, namaOutput) {
+                    PillOutputPemutar(
+                        u,
+                        vm.labelOutputKustom?.takeIf { it.isNotBlank() } ?: namaOutput,
+                        onTahan = {
+                            teksInfo = vm.labelOutputKustom?.takeIf { it.isNotBlank() } ?: namaOutput
+                            editInfo = "output"
+                        },
+                    ) {
                         vm.beriTahu("Output suara: $namaOutput")
+                    }
+                }
+            }
+        }
+        // === Tombol ⋮ pojok kanan atas + menu kacanya (perintah user
+        // 2026-11-12 malam): acak • ulangi • berbagi • hapus. Kaca cair
+        // di tombol DAN di kartunya, nyampel cover lewat LocalKacaMedia.
+        if (lagu != null) {
+            CompositionLocalProvider(LocalKacaMedia provides backdropPemutar) {
+                Box(Modifier.fillMaxSize()) {
+                    if (menuPemutar) {
+                        Box(
+                            Modifier.fillMaxSize().clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { menuPemutar = false },
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(top = 10.dp, end = 14.dp)
+                            .size(40.dp)
+                            .kacaCairHitam(CircleShape, bayangan = 8.dp)
+                            .clickable { menuPemutar = !menuPemutar },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.MoreVert, "Menu pemutar",
+                            tint = Color.White, modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = menuPemutar,
+                        enter = slideInVertically(tween(240)) { -it / 3 } + fadeIn(tween(200)),
+                        exit = slideOutVertically(tween(180)) { -it / 3 } + fadeOut(tween(140)),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(top = 58.dp, end = 14.dp),
+                    ) {
+                        Column(
+                            Modifier
+                                .width(236.dp)
+                                .kacaCairHitam(RoundedCornerShape(20.dp), bayangan = 16.dp)
+                                .padding(vertical = 6.dp),
+                        ) {
+                            BarisMenuPemutar(
+                                ikon = Icons.Filled.Shuffle,
+                                label = "Putar acak",
+                                nyala = vm.acakLagu,
+                            ) { vm.toggleAcakLagu() }
+                            BarisMenuPemutar(
+                                ikon = if (vm.ulangLagu == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                                label = "Ulangi pemutaran",
+                                nyala = vm.ulangLagu != 0,
+                                status = when (vm.ulangLagu) {
+                                    1 -> "Semua"
+                                    2 -> "Satu"
+                                    else -> null
+                                },
+                            ) { vm.siklusUlangLagu() }
+                            BarisMenuPemutar(ikon = Icons.Filled.Share, label = "Berbagi") {
+                                menuPemutar = false
+                                if (lagu.akunDrive.isNotBlank()) {
+                                    vm.beriTahu("Lagu Drive belum bisa dibagikan")
+                                } else {
+                                    val niat = Intent(Intent.ACTION_SEND).apply {
+                                        type = ctx.contentResolver.getType(lagu.uri) ?: "audio/*"
+                                        putExtra(Intent.EXTRA_STREAM, lagu.uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    runCatching {
+                                        ctx.startActivity(Intent.createChooser(niat, "Bagikan lagu"))
+                                    }
+                                }
+                            }
+                            BarisMenuPemutar(
+                                ikon = Icons.Filled.Delete,
+                                label = "Hapus",
+                                bahaya = true,
+                            ) {
+                                menuPemutar = false
+                                if (lagu.akunDrive.isNotBlank()) {
+                                    vm.beriTahu("Lagu Drive tidak bisa dihapus dari sini")
+                                } else {
+                                    penghapusPemutar.value = lagu
+                                    val permintaan = MediaStore.createDeleteRequest(
+                                        ctx.contentResolver, listOf(lagu.uri),
+                                    )
+                                    peluncurHapusPemutar.launch(
+                                        IntentSenderRequest.Builder(permintaan.intentSender).build(),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                // === Pengubah judul/artis (klik judul/artis di kartu) ===
+                AnimatedVisibility(
+                    visible = editInfo != null,
+                    enter = fadeIn(tween(180)),
+                    exit = fadeOut(tween(140)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { editInfo = null },
+                    )
+                }
+                AnimatedVisibility(
+                    visible = editInfo != null,
+                    modifier = Modifier.align(Alignment.Center),
+                    enter = fadeIn(tween(200)) +
+                        slideInVertically(tween(300, easing = FastOutSlowInEasing)) { it / 3 },
+                    exit = fadeOut(tween(160)) +
+                        slideOutVertically(tween(260)) { it / 3 },
+                ) {
+                    Column(
+                        Modifier
+                            .padding(horizontal = 28.dp)
+                            .fillMaxWidth()
+                            .kacaCairHitam(RoundedCornerShape(24.dp), bayangan = 16.dp)
+                            .padding(20.dp),
+                    ) {
+                        Text(
+                            when (editInfo) { "artis" -> "Artis"; "output" -> "Nama output"; else -> "Judul" },
+                            color = Color.White, fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .kacaCairHitam(RoundedCornerShape(14.dp), bayangan = 0.dp)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                        ) {
+                            BasicTextField(
+                                value = teksInfo,
+                                onValueChange = { teksInfo = it },
+                                singleLine = true,
+                                textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                                cursorBrush = SolidColor(BiruIosGelap),
+                                modifier = Modifier.fillMaxWidth(),
+                                decorationBox = { isiDalam ->
+                                    if (teksInfo.isEmpty()) {
+                                        Text(
+                                            when (editInfo) { "artis" -> "Nama artis"; "output" -> "Nama perangkat output"; else -> "Judul lagu" },
+                                            color = Color.White.copy(alpha = 0.45f),
+                                            fontSize = 15.sp,
+                                        )
+                                    }
+                                    isiDalam()
+                                },
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            Box(
+                                Modifier
+                                    .kacaCairHitam(CircleShape, bayangan = 0.dp)
+                                    .clickable { editInfo = null }
+                                    .padding(horizontal = 18.dp, vertical = 9.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("Batal", color = Color.White, fontSize = 14.sp)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Box(
+                                Modifier
+                                    .background(BiruIosGelap, CircleShape)
+                                    .clickable {
+                                        val kolom = editInfo
+                                        if (kolom == "output") {
+                                            vm.aturLabelOutputKustom(teksInfo)
+                                        } else if (kolom == "judul") {
+                                            vm.ubahInfoLagu(lagu, judulBaru = teksInfo.trim(), artisBaru = null)
+                                        } else if (kolom == "artis") {
+                                            vm.ubahInfoLagu(lagu, judulBaru = null, artisBaru = teksInfo.trim())
+                                        }
+                                        editInfo = null
+                                    }
+                                    .padding(horizontal = 18.dp, vertical = 9.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    "Simpan", color = Color.White, fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
                     }
                 }
             }

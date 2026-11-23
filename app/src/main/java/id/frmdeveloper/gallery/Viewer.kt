@@ -85,6 +85,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -401,6 +402,7 @@ private fun VideoPage(
     onModeMusik: (Boolean) -> Unit = {},
     onLompatAcak: () -> Unit = {},
     onSerahkanKeLatar: (Long) -> Unit = {},
+    labelOutputKustom: String? = null,
     sambungan: Pair<String, Long>? = null,
     onSambunganTerpakai: () -> Unit = {},
     onKunciPager: (Boolean) -> Unit = {},
@@ -648,6 +650,7 @@ private fun VideoPage(
                 onLompatAcak = onLompatAcak,
                 onKeluar = { onModeMusik(false) },
                 onDaftarView = { playerViewRef = it },
+                labelOutputKustom = labelOutputKustom,
             )
         } else {
         AndroidView(
@@ -770,24 +773,35 @@ private fun VideoPage(
                     TombolKaca(onClick = { menuOpen = true }) {
                         Icon(Icons.Filled.MoreVert, "Lainnya", tint = Color.White, modifier = Modifier.size(19.dp))
                     }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenu(
+                        expanded = menuOpen, onDismissRequest = { menuOpen = false },
+                        modifier = Modifier.kacaCairHitam(RoundedCornerShape(20.dp), bayangan = 12.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        containerColor = Color.Transparent,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                    ) {
                         DropdownMenuItem(
                             text = { Text("Tangkap frame") },
                             onClick = { menuOpen = false; tangkapFrame() },
+                            colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                         )
                         DropdownMenuItem(
                             text = { Text("Rincian") },
                             onClick = { menuOpen = false; onInfo() },
+                            colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                         )
                         if (tampilBerbagi) {
                             DropdownMenuItem(
                                 text = { Text("Berbagi") },
                                 onClick = { menuOpen = false; onShare() },
+                            colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                             )
                         }
                         DropdownMenuItem(
                             text = { Text("Hapus") },
                             onClick = { menuOpen = false; onDelete() },
+                            colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                         )
                     }
                 }
@@ -971,6 +985,7 @@ private fun LayarModeMusikVideo(
     onLompatAcak: () -> Unit,
     onKeluar: () -> Unit,
     onDaftarView: (PlayerView) -> Unit,
+    labelOutputKustom: String? = null,
 ) {
     // Latar = FRAME video utama sendiri: permukaan cover (TextureView)
     // dipotret kecil (~112px) berkala, ditampilkan buram memenuhi layar.
@@ -1192,6 +1207,11 @@ private fun LayarModeMusikVideo(
                         DropdownMenu(
                             expanded = menuLainVideo,
                             onDismissRequest = { menuLainVideo = false },
+                            modifier = Modifier.kacaCairHitam(RoundedCornerShape(20.dp), bayangan = 12.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            containerColor = Color.Transparent,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
                         ) {
                             DropdownMenuItem(
                                 text = { Text("Acak") },
@@ -1200,6 +1220,7 @@ private fun LayarModeMusikVideo(
                                     { Icon(Icons.Filled.Check, null) }
                                 } else null,
                                 onClick = { acakVideo = !acakVideo; menuLainVideo = false },
+                                colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                             )
                             DropdownMenuItem(
                                 text = { Text("Favorit") },
@@ -1213,6 +1234,7 @@ private fun LayarModeMusikVideo(
                                     { Icon(Icons.Filled.Check, null) }
                                 } else null,
                                 onClick = { onToggleFavorite(); menuLainVideo = false },
+                                colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                             )
                             DropdownMenuItem(
                                 text = {
@@ -1231,11 +1253,13 @@ private fun LayarModeMusikVideo(
                                     )
                                 },
                                 onClick = { ulangVideo = (ulangVideo + 1) % 3; menuLainVideo = false },
+                                colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                             )
                             DropdownMenuItem(
                                 text = { Text("Rincian") },
                                 leadingIcon = { Icon(Icons.Filled.Info, null) },
                                 onClick = { menuLainVideo = false; rincianVideo = true },
+                                colors = MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White),
                             )
                         }
                     }
@@ -1297,11 +1321,8 @@ private fun LayarModeMusikVideo(
                     u,
                 )
                 Spacer(Modifier.height(u * 26))
-                // Transport PERSIS referensi: bintang • prev • jeda • next
                 BarisTransportPemutar(
                     u = u,
-                    favorit = favorit,
-                    onFavorit = onToggleFavorite,
                     onPrev = {
                         if (posisiMs > 3000) player.seekTo(0)
                         else if (acakVideo) onLompatAcak() else onPrev()
@@ -1336,7 +1357,7 @@ private fun LayarModeMusikVideo(
                 )
                 Spacer(Modifier.height(u * 24))
                 // Pil output ala AirPlay
-                PillOutputPemutar(u, namaOutput) {
+                PillOutputPemutar(u, labelOutputKustom?.takeIf { it.isNotBlank() } ?: namaOutput) {
                     toastMode("Output suara: $namaOutput")
                 }
             }
@@ -1597,6 +1618,7 @@ fun ViewerScreen(
     videoSedangDiLatar: Boolean = false,
     onSerahkanVideo: (List<MediaItem>, MediaItem, Long) -> Unit = { _, _, _ -> },
     onAmbilAlihVideo: () -> Pair<String, Long>? = { null },
+    labelOutputKustom: String? = null,
 ) {
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) { items.size }
@@ -1831,6 +1853,7 @@ fun ViewerScreen(
                     item = item,
                     isCurrent = page == pagerState.currentPage,
                     favorit = isFavorite(item),
+                    labelOutputKustom = labelOutputKustom,
                     onToggleFavorite = { onToggleFavorite(item) },
                     onInfo = { rincianTerbuka = true },
                     tampilBerbagi = !item.isDrive,

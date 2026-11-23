@@ -301,6 +301,109 @@ fun Modifier.kacaCair(
 }
 
 /**
+ * Kaca cair buat KROM DI ATAS KONTEN LAYAR (krom mode pilih foto/lagu):
+ * kalau layarnya menyediakan rekaman kontennya sendiri lewat
+ * [LocalKacaMedia] (grid foto / daftar lagu direkam oleh layarnya),
+ * nyampel rekaman ITU — kaca beneran di atas foto, bukan mesh pucat
+ * (keluhan user 2026-11-12 malam: "di foto selector popupnya kok gak
+ * liquid glass"). Resep sama persis [kacaCair]; tanpa rekaman jatuh
+ * ke [kacaCair] biasa.
+ */
+@Composable
+fun Modifier.kacaCairKonten(
+    bentuk: Shape,
+    gelap: Boolean,
+    bayangan: Dp = 12.dp,
+): Modifier {
+    val media = LocalKacaMedia.current
+    val bentukSudut = bentuk as? CornerBasedShape
+    if (media == null || bentukSudut == null ||
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+    ) {
+        return this.kacaCair(bentuk, gelap, bayangan)
+    }
+    val densitas = LocalDensity.current
+    val blurPx = with(densitas) { 8.dp.toPx() }
+    val lensTinggiPx = with(densitas) { 12.dp.toPx() }
+    val lensJumlahPx = with(densitas) { 26.dp.toPx() }
+    return this.drawBackdrop(
+        backdrop = media,
+        shape = { bentukSudut },
+        effects = {
+            vibrancy()
+            blur(blurPx)
+            if (Build.VERSION.SDK_INT >= 33) {
+                lens(
+                    refractionHeight = lensTinggiPx,
+                    refractionAmount = lensJumlahPx,
+                    depthEffect = true,
+                    chromaticAberration = true,
+                )
+            }
+        },
+        onDrawSurface = {
+            drawRect(
+                if (gelap) Color.White.copy(alpha = 0.10f)
+                else Color.White.copy(alpha = 0.30f),
+            )
+        },
+    )
+}
+
+/**
+ * Kaca buat KARTU MENU popup (DropdownMenu): KOMPOSIT — dasarnya
+ * tumpukan kaca gradasi (cahaya tetesan + tepi spekular), di atasnya
+ * Liquid Glass asli library (drawBackdrop: vibrancy -> blur -> LENSA
+ * cembung) nyampel backdrop yg sama kayak [kacaCair]. Popup memang
+ * jendela terpisah; kalau sampel layer-nya tidak tembus di jendela
+ * popup, yg tampil tetap kaca gradasinya + lapisan permukaan tipis —
+ * jadi aman di dua-duanya (perintah user 2026-11-12 malam: menu titik
+ * tiga "kok gak ada efek kaca cembungnya?").
+ */
+@Composable
+fun Modifier.kacaMenu(
+    bentuk: Shape,
+    gelap: Boolean,
+    bayangan: Dp = 12.dp,
+): Modifier {
+    val dasar = this.kacaPolos(bentuk, gelap, bayangan)
+    val dalamRekaman = LocalDalamRekaman.current
+    val backdrop = if (dalamRekaman) LocalKacaMesh.current else LocalKacaKonten.current
+    val bentukSudut = bentuk as? CornerBasedShape
+    if (backdrop == null || bentukSudut == null ||
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+    ) {
+        return dasar
+    }
+    val densitas = LocalDensity.current
+    val blurPx = with(densitas) { 10.dp.toPx() }
+    val lensTinggiPx = with(densitas) { 14.dp.toPx() }
+    val lensJumlahPx = with(densitas) { 30.dp.toPx() }
+    return dasar.drawBackdrop(
+        backdrop = backdrop,
+        shape = { bentukSudut },
+        effects = {
+            vibrancy()
+            blur(blurPx)
+            if (Build.VERSION.SDK_INT >= 33) {
+                lens(
+                    refractionHeight = lensTinggiPx,
+                    refractionAmount = lensJumlahPx,
+                    depthEffect = true,
+                    chromaticAberration = true,
+                )
+            }
+        },
+        onDrawSurface = {
+            drawRect(
+                if (gelap) Color.White.copy(alpha = 0.12f)
+                else Color.White.copy(alpha = 0.32f),
+            )
+        },
+    )
+}
+
+/**
  * Kaca hitam di atas media (foto/video): selalu gelap. Kalau ada
  * backdrop media di lingkup ini ([LocalKacaMedia] — penampil), pakai
  * Liquid Glass asli library Backdrop (vibrancy -> blur -> lens) dgn
